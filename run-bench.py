@@ -618,7 +618,7 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
         synthetic_sharegpt_data_generation()
         run_synthetic.share_gpt_generated = True
 
-    workload_exec_script_path = Path(__file__).parent / '3-workloads' / 'synthetic' / 'run_synthetic.sh'
+    workload_exec_script_path = Path(__file__).parent / '3-workloads' / 'synthetic' / 'run_synthetic_layerwise.sh'
     if not workload_exec_script_path.exists():
         raise FileNotFoundError(f"Synthetic script not found at {workload_exec_script_path}")
 
