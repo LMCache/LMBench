@@ -8,7 +8,7 @@ Infrastructure:
 Serving:
   Baseline: Direct-ProductionStack
   Direct-ProductionStack:
-    kubernetesConfigSelection: layerwise/wo.yaml
+    kubernetesConfigSelection: layerwise/w.yaml
     hf_token: <YOUR_HF_TOKEN> # do NOT modify if you are using LMCacheGKE (keep as <YOUR_HF_TOKEN>). This is only needed for LocalMinikube
     modelURL: meta-llama/Llama-3.1-8B-Instruct
 
