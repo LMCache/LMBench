@@ -3,9 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Ignore ALL csv and json files
-**/*.csv
-**/*.json
+# Ignore ALL csv and json and png files in 4-latest-results/
+4-latest-results/**/*.csv
+4-latest-results/**/*.json
+4-latest-results/**/*.png
 
 # Distribution / packaging
 .Python

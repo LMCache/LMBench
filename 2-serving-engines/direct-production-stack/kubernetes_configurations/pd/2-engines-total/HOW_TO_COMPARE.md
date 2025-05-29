@@ -1,3 +1,3 @@
 ```yaml
-Name: 2-pd-benchmark # suggested
+Name: 2-pd-benchmarks # suggested
 ```

@@ -20,20 +20,44 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Check bench-spec.yaml configuration
+      - name: Check run-bench.yaml configuration
         shell: bash
         run: |
-          if [ ! -f "bench-spec.yaml" ]; then
-            echo "::error:: bench-spec.yaml not found in project root."
+          if [ ! -f "run-bench.yaml" ]; then
+            echo "::error:: run-bench.yaml not found in project root."
             exit 1
           fi
 
-          if ! grep -q "Location: LMCacheGKE" bench-spec.yaml; then
-            echo "::warning:: Location: LMCacheGKE not found in bench-spec.yaml. Skipping benchmark run."
+          # Check if any of the spec files contain LMCacheGKE
+          found_lmcache_gke=false
+
+          # Extract spec files from run-bench.yaml and check each one
+          spec_files=$(python3 -c "
+          import yaml
+          with open('run-bench.yaml', 'r') as f:
+              config = yaml.safe_load(f)
+              for spec_file in config.get('0-bench-specs', []):
+                  print(f'0-bench-specs/{spec_file}')
+          ")
+
+          for spec_file in $spec_files; do
+            if [ -f "$spec_file" ]; then
+              if grep -q "Location: LMCacheGKE" "$spec_file"; then
+                found_lmcache_gke=true
+                echo "✅ Found LMCacheGKE configuration in $spec_file"
+                break
+              fi
+            else
+              echo "::warning:: Spec file $spec_file not found"
+            fi
+          done
+
+          if [ "$found_lmcache_gke" = false ]; then
+            echo "::warning:: Location: LMCacheGKE not found in any spec files. Skipping benchmark run."
             exit 0
           fi
 
-          echo "✅ bench-spec.yaml correctly configured for LMCacheGKE."
+          echo "✅ run-bench.yaml correctly configured for LMCacheGKE."
 
       - name: Show runner info
         run: |
@@ -68,25 +92,10 @@ jobs:
           echo "✅ Listing compute instances..."
           gcloud compute instances list
 
-      - name: Inject HF_TOKEN into bench-spec.yaml
-        shell: bash
-        env:
-          ENV_HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          if [ -f "bench-spec.yaml" ]; then
-            echo "bench-spec.yaml found, injecting HF_TOKEN..."
-            if [ -n "$ENV_HF_TOKEN" ]; then
-              sed -i 's/^\(\s*-*\s*hf_token:\s*\).*/\1'"$ENV_HF_TOKEN"'/' bench-spec.yaml
-              echo "Injection complete."
-            else
-              echo "::warning:: HF_TOKEN secret is not set. Skipping injection."
-            fi
-          else
-            echo "::warning:: bench-spec.yaml not found in project root."
-          fi
-
       - name: Set up Conda environment and run benchmark script
         shell: bash -l {0}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate py312

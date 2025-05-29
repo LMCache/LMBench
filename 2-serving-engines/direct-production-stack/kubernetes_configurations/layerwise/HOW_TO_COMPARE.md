@@ -1,7 +1,7 @@
 Running both at once:
 
 ```yaml
-Name: layerwise-benchmark # suggested
+Name: layerwise-benchmarks # suggested
 
 ...
 

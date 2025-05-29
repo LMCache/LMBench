@@ -27,21 +27,17 @@ fi
 # Check if cluster already exists and clean it up if needed
 EXISTING_CLUSTER=$(gcloud container clusters list --filter="name=$CLUSTER_NAME" --format="value(name)" 2>/dev/null || true)
 if [ -n "$EXISTING_CLUSTER" ]; then
-  echo "Cluster $CLUSTER_NAME already exists. Running cleanup script..."
+  echo "Cluster $CLUSTER_NAME already exists. Starting repeated cleanup attempts..."
 
   # Path to cleanup script
   CLEANUP_SCRIPT="4-latest-results/post-processing/cleanup.sh"
 
-  if [ -f "$CLEANUP_SCRIPT" ]; then
-    # Run the cleanup script
-    bash "$CLEANUP_SCRIPT"
-  else
+  if [ ! -f "$CLEANUP_SCRIPT" ]; then
     echo "Cleanup script not found at $CLEANUP_SCRIPT"
     exit 1
   fi
 
   # Wait for the cluster to be fully deleted with a timeout
-  echo "Waiting for cluster $CLUSTER_NAME to be completely deleted..."
   TIMEOUT_MINUTES=15
   TIMEOUT_SECONDS=$((TIMEOUT_MINUTES * 60))
   START_TIME=$(date +%s)
@@ -55,6 +51,10 @@ if [ -n "$EXISTING_CLUSTER" ]; then
       echo "Please check the status of the cluster manually and try again."
       exit 1
     fi
+
+    # Try running the cleanup script again in case the previous attempt failed
+    echo "Attempting cleanup..."
+    bash "$CLEANUP_SCRIPT"
 
     # Check if cluster still exists
     CLUSTER_EXISTS=$(gcloud container clusters list --filter="name=$CLUSTER_NAME" --format="value(name)" 2>/dev/null || true)

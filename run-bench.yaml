@@ -1,0 +1,7 @@
+# If you are running locally, make sure to set the HF_TOKEN environment variable
+0-bench-specs:
+  - layerwise-spec.yaml
+  - routing-spec.yaml
+
+1-infrastructure:
+  Location: LocalMinikube

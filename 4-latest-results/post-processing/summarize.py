@@ -100,13 +100,27 @@ def ProcessSummary(
             "message": "This is likely due to empty metrics after filtering failed sessions"
         }
 
-def get_serving_baseline_info(serving_index: Optional[int] = None) -> dict:
-    """Extract serving baseline information from bench-spec.yaml."""
+def get_infrastructure_info() -> dict:
+    """Extract infrastructure information from run-bench.yaml."""
+    infra_info = {}
+
+    if os.path.exists("run-bench.yaml"):
+        try:
+            with open("run-bench.yaml", "r") as config_file:
+                config = yaml.safe_load(config_file)
+                infra_info = config.get('1-infrastructure', {})
+        except Exception as e:
+            print(f"Warning: Could not parse run-bench.yaml: {e}")
+
+    return infra_info
+
+def get_serving_baseline_info(serving_index: Optional[int] = None, spec_file_path: Optional[str] = None) -> dict:
+    """Extract serving baseline information from the specific spec file."""
     serving_info = {}
 
-    if os.path.exists("bench-spec.yaml"):
+    if spec_file_path and os.path.exists(spec_file_path):
         try:
-            with open("bench-spec.yaml", "r") as spec_file:
+            with open(spec_file_path, "r") as spec_file:
                 config = yaml.safe_load(spec_file)
 
             if serving_index is not None and 'Serving' in config:
@@ -124,7 +138,7 @@ def get_serving_baseline_info(serving_index: Optional[int] = None) -> dict:
                         "config": baseline_config_clean
                     }
         except Exception as e:
-            print(f"Warning: Could not parse serving baseline info: {e}")
+            print(f"Warning: Could not parse serving baseline info from {spec_file_path}: {e}")
 
     return serving_info
 
@@ -138,35 +152,41 @@ def process_output(filename: str, **kwargs):
         workload = kwargs.get('WORKLOAD', 'unknown')
         qps = kwargs.get('QPS', 'unknown')
         serving_index = kwargs.get('SERVING_INDEX')
+        spec_file_path = kwargs.get('SPEC_FILE_PATH')
 
         # Create timestamp
         timestamp = datetime.now().strftime("%Y%m%d-%H%M")
 
-        # Generate filename: {NAME}_{BASELINE/KEY}_WKLD_QPS_TIME.json
-        json_filename = f"{name}_{baseline_key}_{workload}_{qps}_{timestamp}.json"
-        json_path = f"4-latest-results/{json_filename}"
+        # Generate filename: {name}/{baseline_key}_{workload}_{qps}_{timestamp}.json
+        json_filename = f"{baseline_key}_{workload}_{qps}_{timestamp}.json"
+        suite_dir = f"4-latest-results/{name}"
+        json_path = f"{suite_dir}/{json_filename}"
+
+        # Create the suite directory if it doesn't exist
+        os.makedirs(suite_dir, exist_ok=True)
 
         # Process benchmark results
         results = ProcessSummary(df, pending_queries=0)
 
-        # Read bench-spec.yaml for infrastructure and name info
-        infra_info = {}
+        # Read infrastructure info from run-bench.yaml
+        infra_info = get_infrastructure_info()
+
+        # Read benchmark name from the specific spec file
         bench_name = name
-        if os.path.exists("bench-spec.yaml"):
+        if spec_file_path and os.path.exists(spec_file_path):
             try:
-                with open("bench-spec.yaml", "r") as spec_file:
+                with open(spec_file_path, "r") as spec_file:
                     config = yaml.safe_load(spec_file)
                     bench_name = config.get('Name', name)
-                    infra_info = config.get('Infrastructure', {})
             except Exception as e:
-                print(f"Warning: Could not parse bench-spec.yaml: {e}")
+                print(f"Warning: Could not parse spec file {spec_file_path}: {e}")
 
-        # Get serving baseline info
-        serving_info = get_serving_baseline_info(serving_index)
+        # Get serving baseline info from the specific spec file
+        serving_info = get_serving_baseline_info(serving_index, spec_file_path)
 
         # Create workload info (exclude sensitive and internal parameters)
         workload_info = {k: v for k, v in kwargs.items()
-                        if k not in ['NAME', 'KEY', 'SERVING_INDEX']}
+                        if k not in ['NAME', 'KEY', 'SERVING_INDEX', 'SPEC_FILE_PATH']}
 
         # Create the final JSON structure
         output_data = {

@@ -5,9 +5,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../../" && pwd )"
 cd "$SCRIPT_DIR"
 
-if [[ $# -lt 9 ]]; then
-    echo "Usage: $0 <model> <base url> <save file key> <num rounds> <system prompt> <chat history> <answer len> <name> <serving_index>"
-    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:8000 test 10 0 256 20 layerwise-benchmark 0"
+if [[ $# -lt 10 ]]; then
+    echo "Usage: $0 <model> <base url> <save file key> <num rounds> <system prompt> <chat history> <answer len> <name> <serving_index> <spec_file_path>"
+    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:8000 test 10 0 256 20 layerwise-benchmark 0 0-bench-specs/layerwise-spec.yaml"
     exit 1
 fi
 
@@ -22,6 +22,7 @@ CHAT_HISTORY=$6 # User specific chat history length
 ANSWER_LEN=$7 # Generation length per round
 NAME=$8
 SERVING_INDEX=$9
+SPEC_FILE_PATH=${10}
 
 run_mooncake() {
     # $1: qps
@@ -68,7 +69,8 @@ for qps in "${QPS_VALUES[@]}"; do
         CHAT_HISTORY="$CHAT_HISTORY" \
         ANSWER_LEN="$ANSWER_LEN" \
         QPS="$qps" \
-        SERVING_INDEX="$SERVING_INDEX"
+        SERVING_INDEX="$SERVING_INDEX" \
+        SPEC_FILE_PATH="$SPEC_FILE_PATH"
 
     # Change back to script directory
     cd "$SCRIPT_DIR"

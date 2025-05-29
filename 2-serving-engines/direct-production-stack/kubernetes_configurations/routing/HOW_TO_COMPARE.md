@@ -1,7 +1,7 @@
 Running all 4 at once:
 
 ```yaml
-Name: routing-benchmark # suggested
+Name: routing-benchmarks # suggested
 
 ...
 

@@ -1,0 +1,25 @@
+# If you are running locally, make sure to set the HF_TOKEN environment variable
+# Only the spec files listed below will be processed. Template files and other files in 0-bench-specs are ignored.
+0-bench-specs:
+  - layerwise-spec.yaml
+  - routing-spec.yaml
+
+1-infrastructure:
+  # Choose exactly one of the following:
+
+  # Option 1: do not run any workflows
+  Location: NoBench
+  # Option 2: local clone of this repo
+  Location: LocalMinikube
+  # Option 3: running on LMCache GKE cluster
+  Location: LMCacheGKE
+  numClusterGPUs: 1
+  A100_VRAM: 40 # either 40 or 80 (80 is difficult to obtain on GCP so will run as "spot" and may fail)
+  # 1 GPU -> 12 vCPUs, 85GB RAM
+  # 2 GPUs -> 24 vCPUs, 170GB RAM
+  # 4 GPUs -> 48 vCPUs, 340GB RAM
+  # 8 GPUs -> 96 vCPUs, 680GB RAM
+
+  # NOTE: from experience, 4x 40GB A100s with TP 4 cannot run a llama 3.1 70B model with 8192 max_seq_len
+  # so we recommend using 8x 40GB A100s with TP 8 for llama 3.1 70B
+  # or 2x 80GB A100s with TP 2 for llama 3.1 70B

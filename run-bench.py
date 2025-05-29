@@ -16,67 +16,142 @@ HF_TOKEN = None # MUST be set in setup_baseline()
 KEY = None # MUST be set in run_workload()
 CURRENT_SERVING_INDEX = None # Track which serving baseline we're currently running
 CURRENT_SERVING_CONFIG = None # Track the current serving configuration
+CURRENT_SPEC_CONFIG = None # Track the current spec configuration
+CURRENT_SPEC_FILE_PATH = None # Track the current spec file path
 
-def read_bench_spec() -> Dict[str, Any]:
-    """Read and parse the bench-spec.yaml file."""
-    with open('bench-spec.yaml', 'r') as f:
+def read_run_bench_config() -> Dict[str, Any]:
+    """Read and parse the run-bench.yaml file."""
+    with open('run-bench.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
-        # Validate Name field
-        if 'Name' not in config:
-            raise ValueError("Name field is missing in bench-spec.yaml")
+        if '0-bench-specs' not in config:
+            raise ValueError("0-bench-specs field is missing in run-bench.yaml")
 
-        # Validate that Serving is a list of baselines
-        if 'Serving' not in config:
-            raise ValueError("Serving configuration is missing in bench-spec.yaml")
+        spec_files = config['0-bench-specs']
+        if not isinstance(spec_files, list):
+            raise ValueError("0-bench-specs must be a list of spec files")
 
-        serving_configs = config['Serving']
-        if not isinstance(serving_configs, list):
-            raise ValueError("Serving configuration must be a list of baseline configurations")
+        if len(spec_files) == 0:
+            raise ValueError("At least one spec file must be specified in 0-bench-specs")
 
-        if len(serving_configs) == 0:
-            raise ValueError("At least one serving baseline must be specified")
+        # Validate infrastructure configuration
+        if '1-infrastructure' not in config:
+            raise ValueError("1-infrastructure field is missing in run-bench.yaml")
 
-        # Validate each serving baseline configuration
-        for i, serving_config in enumerate(serving_configs):
-            if not isinstance(serving_config, dict) or len(serving_config) != 1:
-                raise ValueError(f"Serving baseline {i} must be a dict with exactly one key (the baseline type)")
+        infrastructure_config = config['1-infrastructure']
+        if not isinstance(infrastructure_config, dict):
+            raise ValueError("1-infrastructure must be a dictionary")
 
-            baseline_type = list(serving_config.keys())[0]
-            baseline_config = serving_config[baseline_type]
+        location = infrastructure_config.get('Location')
+        if not location:
+            raise ValueError("Location must be specified in 1-infrastructure")
 
-            print(f"Validating serving baseline {i}: {baseline_type}")
+        if location not in ['NoBench', 'LocalMinikube', 'LMCacheGKE']:
+            raise ValueError(f"Unsupported infrastructure location: {location}")
 
-            if baseline_type == 'SGLang':
-                hf_token = baseline_config.get('hf_token')
-                if hf_token == '<YOUR_HF_TOKEN>':
-                    raise ValueError(f"hf_token must be specified for SGLang baseline {i}")
-            elif baseline_type == 'Helm-ProductionStack':
-                hf_token = baseline_config.get('hf_token')
-                if hf_token == '<YOUR_HF_TOKEN>':
-                    raise ValueError(f"hf_token must be specified for Helm-ProductionStack baseline {i}")
-            elif baseline_type == 'Direct-ProductionStack':
-                model_url = baseline_config.get('modelURL')
-                hf_token = baseline_config.get('hf_token')
-                if not model_url:
-                    raise ValueError(f"modelURL must be specified for Direct-ProductionStack baseline {i}")
-                if not hf_token:
-                    raise ValueError(f"hf_token must be specified for Direct-ProductionStack baseline {i}")
-            elif baseline_type == 'Dynamo':
-                pass  # No validation needed for Dynamo yet
-            elif baseline_type == 'KubeRay':
-                model_url = baseline_config.get('modelURL')
-                hf_token = baseline_config.get('hf_token')
-                if not model_url:
-                    raise ValueError(f"modelURL must be specified for KubeRay baseline {i}")
-                if hf_token == '<YOUR_HF_TOKEN>':
-                    raise ValueError(f"hf_token must be specified for KubeRay baseline {i}")
-            else:
-                raise ValueError(f"Unsupported baseline type: {baseline_type} in baseline {i}")
+        if location == 'LMCacheGKE':
+            if 'numClusterGPUs' not in infrastructure_config:
+                raise ValueError("numClusterGPUs must be specified for LMCacheGKE")
+            if not isinstance(infrastructure_config['numClusterGPUs'], int):
+                raise ValueError("numClusterGPUs must be an integer")
 
-        print("Validated all serving baselines. run_bench.py now running")
+        print(f"Validated run-bench.yaml with infrastructure location: {location}")
         return config
 
+def substitute_hf_token_in_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Recursively substitute <YOUR_HF_TOKEN> with the HF_TOKEN environment variable."""
+    hf_token = os.environ.get('HF_TOKEN')
+    if not hf_token:
+        print("Warning: HF_TOKEN environment variable must be set!")
+        sys.exit(1)
+
+    def recursive_substitute(obj):
+        if isinstance(obj, dict):
+            return {k: recursive_substitute(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [recursive_substitute(item) for item in obj]
+        elif isinstance(obj, str) and obj == '<YOUR_HF_TOKEN>':
+            return hf_token
+        else:
+            return obj
+
+    return recursive_substitute(config)
+
+def read_and_process_spec_file(spec_file_path: str) -> Dict[str, Any]:
+    """Read a single spec file and process HF_TOKEN substitution."""
+    full_path = Path('0-bench-specs') / spec_file_path
+
+    if not full_path.exists():
+        raise FileNotFoundError(f"Spec file not found: {full_path}")
+
+    with open(full_path, 'r') as f:
+        config = yaml.safe_load(f)
+
+    # Substitute HF_TOKEN
+    config = substitute_hf_token_in_config(config)
+
+    # Validate the config using the existing validation logic
+    return validate_single_spec_config(config, str(full_path))
+
+def validate_single_spec_config(config: Dict[str, Any], file_path: str) -> Dict[str, Any]:
+    """Validate a single spec configuration using the existing validation logic."""
+    # Validate Name field
+    if 'Name' not in config:
+        raise ValueError(f"Name field is missing in {file_path}")
+
+    # Validate that Serving is a list of baselines
+    if 'Serving' not in config:
+        raise ValueError(f"Serving configuration is missing in {file_path}")
+
+    serving_configs = config['Serving']
+    if not isinstance(serving_configs, list):
+        raise ValueError(f"Serving configuration must be a list of baseline configurations in {file_path}")
+
+    if len(serving_configs) == 0:
+        raise ValueError(f"At least one serving baseline must be specified in {file_path}")
+
+    # Validate each serving baseline configuration
+    for i, serving_config in enumerate(serving_configs):
+        if not isinstance(serving_config, dict) or len(serving_config) != 1:
+            raise ValueError(f"Serving baseline {i} must be a dict with exactly one key (the baseline type) in {file_path}")
+
+        baseline_type = list(serving_config.keys())[0]
+        baseline_config = serving_config[baseline_type]
+
+        print(f"Validating serving baseline {i}: {baseline_type} in {file_path}")
+
+        if baseline_type == 'SGLang':
+            hf_token = baseline_config.get('hf_token')
+            if not hf_token:
+                raise ValueError(f"hf_token must be specified for SGLang baseline {i} in {file_path}")
+        elif baseline_type == 'Helm-ProductionStack':
+            hf_token = baseline_config.get('hf_token')
+            if not hf_token:
+                raise ValueError(f"hf_token must be specified for Helm-ProductionStack baseline {i} in {file_path}")
+        elif baseline_type == 'Direct-ProductionStack':
+            model_url = baseline_config.get('modelURL')
+            hf_token = baseline_config.get('hf_token')
+            if not model_url:
+                raise ValueError(f"modelURL must be specified for Direct-ProductionStack baseline {i} in {file_path}")
+            if not hf_token:
+                raise ValueError(f"hf_token must be specified for Direct-ProductionStack baseline {i} in {file_path}")
+        elif baseline_type == 'Dynamo':
+            pass  # No validation needed for Dynamo yet
+        elif baseline_type == 'KubeRay':
+            model_url = baseline_config.get('modelURL')
+            hf_token = baseline_config.get('hf_token')
+            if not model_url:
+                raise ValueError(f"modelURL must be specified for KubeRay baseline {i} in {file_path}")
+            if not hf_token:
+                raise ValueError(f"hf_token must be specified for KubeRay baseline {i} in {file_path}")
+        else:
+            raise ValueError(f"Unsupported baseline type: {baseline_type} in baseline {i} in {file_path}")
+
+    # Note: Infrastructure validation is now handled at the run-bench.yaml level
+    # Individual spec files no longer need to specify infrastructure
+
+    print(f"Validated all serving baselines in {file_path}")
+    return config
 
 # 1. Infrastructure Setup
 def setup_infrastructure(config: Dict[str, Any]) -> None:
@@ -136,6 +211,63 @@ def start_gke_cluster(config: Dict[str, Any]) -> None:
     else:
         raise RuntimeError("Failed to set up GKE cluster")
 
+def setup_infrastructure_from_run_bench_config(infrastructure_config: Dict[str, Any]) -> None:
+    """Set up the infrastructure based on the run-bench.yaml configuration."""
+    location = infrastructure_config.get('Location')
+    if not location:
+        raise ValueError("Infrastructure Location is not specified in run-bench.yaml")
+
+    if location == 'NoBench':
+        print("Not running any benchmarks!")
+        sys.exit(0)
+    elif location == 'LocalMinikube':
+        minikube_installation_from_infrastructure_config(infrastructure_config)
+    elif location == 'LMCacheGKE':
+        start_gke_cluster_from_infrastructure_config(infrastructure_config)
+    else:
+        raise ValueError(f"Unsupported infrastructure location: {location}")
+
+def minikube_installation_from_infrastructure_config(infrastructure_config: Dict[str, Any]) -> None:
+    """Set up minikube using infrastructure config from run-bench.yaml."""
+    script_path = Path(__file__).parent / '1-infrastructure' / 'local-minikube' / 'install-local-minikube.sh'
+
+    if not script_path.exists():
+        raise FileNotFoundError(f"Installation script not found at {script_path}")
+
+    # Make the script executable if it isn't already
+    os.chmod(script_path, 0o755)
+
+    # Execute the installation script
+    print("Setting up local minikube environment...")
+    # This is blocking
+    result = subprocess.run([str(script_path)], check=True)
+
+    if result.returncode == 0:
+        print("Local minikube environment setup completed successfully")
+    else:
+        raise RuntimeError("Failed to set up local minikube environment")
+
+def start_gke_cluster_from_infrastructure_config(infrastructure_config: Dict[str, Any]) -> None:
+    """Set up GKE cluster using infrastructure config from run-bench.yaml."""
+    script_path = Path(__file__).parent / '1-infrastructure' / 'lmcache-gke' / 'run-gke.sh'
+    if not script_path.exists():
+        raise FileNotFoundError(f"GKE cluster setup script not found at {script_path}")
+
+    # add execution permission
+    os.chmod(script_path, 0o755)
+
+    # Execute the script
+    num_gpus = infrastructure_config.get('numClusterGPUs')
+    a100_vram = infrastructure_config.get('A100_VRAM', "40")
+    if not num_gpus:
+        raise ValueError("numClusterGPUs must be specified in run-bench.yaml for GKE cluster setup")
+    result = subprocess.run([str(script_path), str(num_gpus), str(a100_vram)], check=True)
+
+    if result.returncode == 0:
+        print("GKE cluster setup completed successfully")
+    else:
+        raise RuntimeError("Failed to set up GKE cluster")
+
 # 2. Baseline Setup
 def generate_baseline_key(serving_config: Dict[str, Any]) -> str:
     """Generate a baseline key based on the serving configuration."""
@@ -164,7 +296,7 @@ def generate_baseline_key(serving_config: Dict[str, Any]) -> str:
 
 def setup_single_baseline(serving_config: Dict[str, Any], global_config: Dict[str, Any], serving_index: int) -> None:
     """Set up a single baseline (cluster of serving engines) based on the configuration."""
-    global MODEL_URL, HF_TOKEN, KEY, CURRENT_SERVING_INDEX, CURRENT_SERVING_CONFIG
+    global MODEL_URL, HF_TOKEN, KEY, CURRENT_SERVING_INDEX, CURRENT_SERVING_CONFIG, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH
 
     # Store current serving info for later use
     CURRENT_SERVING_INDEX = serving_index
@@ -601,11 +733,10 @@ def sharegpt_run_workload(sharegpt_config: Dict[str, Any]) -> None:
 
     os.chmod(workload_exec_script_path, 0o755)
 
-    global MODEL_URL, CURRENT_SERVING_INDEX
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH
 
-    # Read the benchmark name from config
-    config = read_bench_spec()
-    benchmark_name = config.get('Name', 'unknown')
+    # Read the benchmark name from the current spec config
+    benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
 
     cmd = [str(workload_exec_script_path)]
     cmd.extend([str(MODEL_URL)])
@@ -620,6 +751,7 @@ def sharegpt_run_workload(sharegpt_config: Dict[str, Any]) -> None:
     cmd.extend([str(start_round)])
     cmd.extend([str(benchmark_name)])
     cmd.extend([str(CURRENT_SERVING_INDEX)])
+    cmd.extend([str(CURRENT_SPEC_FILE_PATH)]) # Pass the spec file path
     cmd.extend([str(qps) for qps in qps_values])
 
     # Execute the workload
@@ -651,11 +783,10 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
     if not hasattr(run_synthetic, 'share_gpt_generated'):
         run_synthetic.share_gpt_generated = False
 
-    global MODEL_URL, CURRENT_SERVING_INDEX
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH
 
-    # Read the benchmark name from config
-    config = read_bench_spec()
-    benchmark_name = config.get('Name', 'unknown')
+    # Read the benchmark name from the current spec config
+    benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
 
     qps_values = synthetic_config.get('QPS')
     NUM_USERS_WARMUP = synthetic_config.get('NUM_USERS_WARMUP')
@@ -694,6 +825,7 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
     USE_SHAREGPT=${10}
     NAME=${11}
     SERVING_INDEX=${12}
+    SPEC_FILE_PATH=${13}
     [qps_values...]
     """
     cmd.extend([str(NUM_USERS_WARMUP)])
@@ -705,6 +837,7 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
     cmd.extend([str(USE_SHAREGPT)])
     cmd.extend([str(benchmark_name)])
     cmd.extend([str(CURRENT_SERVING_INDEX)])
+    cmd.extend([str(CURRENT_SPEC_FILE_PATH)]) # Pass the spec file path
     cmd.extend([str(qps) for qps in qps_values])
 
     # Execute the workload
@@ -718,11 +851,10 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
 
 def run_mooncake(mooncake_config: Dict[str, Any]) -> None:
     """Run the Mooncake workload with the specified configuration."""
-    global MODEL_URL, CURRENT_SERVING_INDEX
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH
 
-    # Read the benchmark name from config
-    config = read_bench_spec()
-    benchmark_name = config.get('Name', 'unknown')
+    # Read the benchmark name from the current spec config
+    benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
 
     qps_values = mooncake_config.get('QPS')
     NUM_ROUNDS = mooncake_config.get('NUM_ROUNDS')
@@ -746,6 +878,7 @@ def run_mooncake(mooncake_config: Dict[str, Any]) -> None:
     cmd.extend([str(ANSWER_LEN)])
     cmd.extend([str(benchmark_name)])
     cmd.extend([str(CURRENT_SERVING_INDEX)])
+    cmd.extend([str(CURRENT_SPEC_FILE_PATH)]) # Pass the spec file path
 
     # Execute the workload
     print(f"Running Mooncake workload with parameters: {' '.join(cmd)}")
@@ -758,11 +891,10 @@ def run_mooncake(mooncake_config: Dict[str, Any]) -> None:
 
 def run_agentic(agentic_config: Dict[str, Any]) -> None:
     """Run the Agentic workload with the specified configuration."""
-    global MODEL_URL, CURRENT_SERVING_INDEX
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH
 
-    # Read the benchmark name from config
-    config = read_bench_spec()
-    benchmark_name = config.get('Name', 'unknown')
+    # Read the benchmark name from the current spec config
+    benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
 
     NEW_USER_INTERVALS = agentic_config.get('NEW_USER_INTERVALS')
     NUM_USERS_WARMUP = agentic_config.get('NUM_USERS_WARMUP')
@@ -790,6 +922,7 @@ def run_agentic(agentic_config: Dict[str, Any]) -> None:
     cmd.extend([str(ANSWER_LEN)])
     cmd.extend([str(benchmark_name)])
     cmd.extend([str(CURRENT_SERVING_INDEX)])
+    cmd.extend([str(CURRENT_SPEC_FILE_PATH)]) # Pass the spec file path
     cmd.extend([str(interval) for interval in NEW_USER_INTERVALS])
 
     # Execute the workload
@@ -810,6 +943,36 @@ def clean_up() -> None:
     os.chmod(cleanup_script_path, 0o755)
     subprocess.run([str(cleanup_script_path)], check=True)
 
+def run_suite_visualization(suite_name: str) -> None:
+    """Run the suite workloads visualization script for a completed benchmark suite."""
+    try:
+        visualization_script_path = Path(__file__).parent / '4-latest-results' / 'post-processing' / 'suite-workloads-visualization.py'
+
+        if not visualization_script_path.exists():
+            print(f"Warning: Visualization script not found at {visualization_script_path}")
+            return
+
+        print(f"\n=== Generating workload comparisons for suite: {suite_name} ===")
+
+        # Run the visualization script
+        result = subprocess.run([
+            sys.executable,
+            str(visualization_script_path),
+            suite_name
+        ], check=True, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            print(f"Successfully generated workload comparisons for suite: {suite_name}")
+            if result.stdout:
+                print(result.stdout)
+        else:
+            print(f"Warning: Visualization script failed for suite: {suite_name}")
+            if result.stderr:
+                print(f"Error: {result.stderr}")
+
+    except Exception as e:
+        print(f"Warning: Failed to run visualization for suite {suite_name}: {str(e)}")
+
 import argparse
 
 def parse_args():
@@ -825,6 +988,68 @@ def parse_args():
     parser.add_argument("--skip-node-affinity", action="store_true", help="Skip node pool affinity assignments )")
     return parser.parse_args()
 
+def run_multiple_specs(run_bench_config: Dict[str, Any], args) -> None:
+    """Run multiple benchmark specs in sequence."""
+    global CURRENT_SPEC_FILE_PATH
+
+    spec_files = run_bench_config['0-bench-specs']
+    infrastructure_config = run_bench_config['1-infrastructure']
+
+    print(f"Found {len(spec_files)} spec files to run: {spec_files}")
+    print(f"Infrastructure configuration: {infrastructure_config}")
+
+    # Track if infrastructure has been set up
+    infrastructure_setup = False
+
+    for spec_index, spec_file in enumerate(spec_files):
+        try:
+            print(f"\n{'='*80}")
+            print(f"RUNNING SPEC {spec_index + 1}/{len(spec_files)}: {spec_file}")
+            print(f"{'='*80}")
+
+            # Set the current spec file path for use in workload functions
+            CURRENT_SPEC_FILE_PATH = f"0-bench-specs/{spec_file}"
+
+            # Read and process the spec file
+            config = read_and_process_spec_file(spec_file)
+
+            # Set the current spec config for use in workload functions
+            global CURRENT_SPEC_CONFIG
+            CURRENT_SPEC_CONFIG = config
+
+            # Inject infrastructure config into the spec config for compatibility with existing functions
+            config['Infrastructure'] = infrastructure_config
+
+            # 1. Set up infrastructure (only once for the first spec)
+            if args.start_from <= 1 and not infrastructure_setup:
+                setup_infrastructure_from_run_bench_config(infrastructure_config)
+                infrastructure_setup = True
+
+            # 2 & 3. Run cartesian product of serving baselines and workloads
+            if args.start_from <= 2:
+                run_cartesian_product(config)
+            else:
+                # If starting from stage 3, we need injected values
+                if not MODEL_URL or not HF_TOKEN or not KEY:
+                    raise ValueError("When starting from stage 3, --model-url, --hf-token, and --key must be provided")
+                run_workload(config)
+
+            print(f"\n=== Completed spec {spec_index + 1}: {spec_file} ===")
+
+            # Generate workload comparisons for this completed suite
+            suite_name = config.get('Name', 'unknown')
+            run_suite_visualization(suite_name)
+
+        except Exception as e:
+            print(f"Error with spec {spec_file}: {str(e)}")
+            # Continue with next spec
+            continue
+
+        finally:
+            # Clean up after each spec (except the last one, which is handled in main)
+            if spec_index < len(spec_files) - 1:
+                print(f"Cleaning up after spec {spec_file}...")
+                clean_up()
 
 # High-Level Benchmarking Pipeline
 def main() -> None:
@@ -851,21 +1076,11 @@ def main() -> None:
         print("Ignoring data generation!")
 
     try:
-        # Read the configuration
-        config = read_bench_spec()
+        # Read the run-bench configuration
+        run_bench_config = read_run_bench_config()
 
-        # 1. Set up infrastructure (only once)
-        if args.start_from <= 1:
-            setup_infrastructure(config)
-
-        # 2 & 3. Run cartesian product of serving baselines and workloads
-        if args.start_from <= 2:
-            run_cartesian_product(config)
-        else:
-            # If starting from stage 3, we need injected values
-            if not MODEL_URL or not HF_TOKEN or not KEY:
-                raise ValueError("When starting from stage 3, --model-url, --hf-token, and --key must be provided")
-            run_workload(config)
+        # Run all specs in sequence
+        run_multiple_specs(run_bench_config, args)
 
     except Exception as e:
         print(f"Benchmarking Error: {str(e)}")

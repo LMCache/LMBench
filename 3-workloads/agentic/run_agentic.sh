@@ -5,9 +5,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../../" && pwd )"
 cd "$SCRIPT_DIR"
 
-if [[ $# -lt 11 ]]; then
-    echo "Usage: $0 \"<model list>\" <base url> <save file key> <num_users_warmup> <num_agents> <num_rounds> <system_prompt> <chat_history> <answer_len> <name> <serving_index> [new_user_intervals...]"
-    echo "Example: $0 \"meta-llama/Llama-3.1-8B-Instruct\" http://localhost:8000 test 100 10 10 0 100 20 layerwise-benchmark 0 1 2"
+if [[ $# -lt 12 ]]; then
+    echo "Usage: $0 \"<model list>\" <base url> <save file key> <num_users_warmup> <num_agents> <num_rounds> <system_prompt> <chat_history> <answer_len> <name> <serving_index> <spec_file_path> [new_user_intervals...]"
+    echo "Example: $0 \"meta-llama/Llama-3.1-8B-Instruct\" http://localhost:8000 test 100 10 10 0 100 20 layerwise-benchmark 0 0-bench-specs/layerwise-spec.yaml 1 2"
     exit 1
 fi
 
@@ -24,10 +24,11 @@ CHAT_HISTORY=$8
 ANSWER_LEN=$9
 NAME=${10}
 SERVING_INDEX=${11}
+SPEC_FILE_PATH=${12}
 
 # Optional QPS-like values (we'll use as new-user-intervals here)
-if [ $# -gt 11 ]; then
-    NEW_USER_INTERVALS=("${@:12}")
+if [ $# -gt 12 ]; then
+    NEW_USER_INTERVALS=("${@:13}")
 else
     NEW_USER_INTERVALS=(2)  # Default new user interval
 fi
@@ -99,7 +100,8 @@ for interval in "${NEW_USER_INTERVALS[@]}"; do
         CHAT_HISTORY="$CHAT_HISTORY" \
         ANSWER_LEN="$ANSWER_LEN" \
         NEW_USER_INTERVAL="$interval" \
-        SERVING_INDEX="$SERVING_INDEX"
+        SERVING_INDEX="$SERVING_INDEX" \
+        SPEC_FILE_PATH="$SPEC_FILE_PATH"
 
     # Change back to script directory
     cd "$SCRIPT_DIR"

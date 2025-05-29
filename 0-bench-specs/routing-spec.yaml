@@ -1,11 +1,4 @@
-Name: layerwise-benchmark
-
-Infrastructure:
-  Location: NoBench # when pushing changes that should not run any workflows
-  # Location: LocalMinikube
-  # Location: LMCacheGKE
-  # numClusterGPUs: 1
-  # A100_VRAM: 40
+Name: routing-benchmark
 
 Serving:
   - Direct-ProductionStack:

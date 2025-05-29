@@ -1,0 +1,79 @@
+Name: layerwise-benchmark
+
+Serving:
+  - Direct-ProductionStack:
+      kubernetesConfigSelection: layerwise/w_lmcache.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+  - Direct-ProductionStack:
+      kubernetesConfigSelection: layerwise/wo_lmcache.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+
+
+#   - Helm-ProductionStack:
+#       vLLM-Version: 0 # vllm v0 or v1
+#       enablePrefixCaching: false # vllm v1 specific only (no prefix caching in v0)
+#       useLMCache: false # true or false
+#       modelURL: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+#       replicaCount: 1 # PLEASE make sure that replicaCount x numGPUs <= numClusterGPUs
+#       numGPUs: 1 # PLEASE make sure that replicaCount x numGPUs <= numClusterGPUs
+#       numCPUs: 4 # PLEASE look at the vCPU limits in the comment above (try to keep 12 or below)
+#       tensorParallelSize: 1 # please make sure tensorParallelSize <= numGPUs (this is the number of GPUs per replica)
+#       hf_token: <YOUR_HF_TOKEN> # do NOT modify if you are using LMCacheGKE (keep as <YOUR_HF_TOKEN>). This is only needed for LocalMinikube
+#       maxModelLen: 16384
+
+Workload:
+
+  # ShareGPT:
+  #   - LIMIT: 1000
+  #     MIN_ROUNDS: 10
+  #     START_ROUND: 0
+  #     QPS: [1.34, 2]
+
+  LMCacheSynthetic:
+  #   # long input long output:
+  #   - NUM_USERS_WARMUP: 750
+  #     NUM_USERS: 350
+  #     NUM_ROUNDS: 20
+  #     SYSTEM_PROMPT: 0
+  #     CHAT_HISTORY: 20000
+  #     ANSWER_LEN: 1000
+  #     QPS: [0.7]
+  #     USE_SHAREGPT: true
+
+  #   # long input short output:
+  #   - NUM_USERS_WARMUP: 20
+  #     NUM_USERS: 15
+  #     NUM_ROUNDS: 20
+  #     SYSTEM_PROMPT: 1000
+  #     CHAT_HISTORY: 20000
+  #     ANSWER_LEN: 100
+  #     QPS: [0.1]
+  #     USE_SHAREGPT: true
+
+    # short input short output:
+    - NUM_USERS_WARMUP: 0
+      NUM_USERS: 10
+      NUM_ROUNDS: 2
+      SYSTEM_PROMPT: 0
+      CHAT_HISTORY: 8000
+      ANSWER_LEN: 20
+      QPS: [0.5]
+      USE_SHAREGPT: false
+
+  # Mooncake:
+  # - NUM_ROUNDS: 10
+  #   SYSTEM_PROMPT: 0
+  #   CHAT_HISTORY: 256
+  #   ANSWER_LEN: 20
+  #   QPS: [0.5]
+
+  # Agentic:
+  # - NUM_USERS_WARMUP: 100
+  #   NUM_AGENTS: 10
+  #   NUM_ROUNDS: 10
+  #   SYSTEM_PROMPT: 0
+  #   CHAT_HISTORY: 100
+  #   ANSWER_LEN: 20
+  #   NEW_USER_INTERVALS: [1]
