@@ -42,7 +42,7 @@ daily_routing_lmcache_sessionaware_agentic_0.2_20250529-1319.json
 daily_routing_lmcache_kvaware_agentic_0.2_20250529-1523.json
 ```
 
-Example Artifact:
+Example Artifact: `example_layerwise_w_synthetic_0.7_20250529-0758.json`
 
 ```text
 {
