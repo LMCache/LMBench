@@ -2,6 +2,9 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 KUBECTL_DIR="$HOME/.local/bin"
 KUBECTL_PATH="$KUBECTL_DIR/kubectl"
 

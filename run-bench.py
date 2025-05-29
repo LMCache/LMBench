@@ -14,51 +14,67 @@ GLOBAL_ARGS = None # MIGHT be set in parse_args()
 MODEL_URL = None # MUST be set in setup_baseline()
 HF_TOKEN = None # MUST be set in setup_baseline()
 KEY = None # MUST be set in run_workload()
+CURRENT_SERVING_INDEX = None # Track which serving baseline we're currently running
+CURRENT_SERVING_CONFIG = None # Track the current serving configuration
 
 def read_bench_spec() -> Dict[str, Any]:
     """Read and parse the bench-spec.yaml file."""
     with open('bench-spec.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
-        # validate that hf_token is not <YOUR_HF_TOKEN>
-        baseline = config['Serving'].get('Baseline')
-        if baseline == 'SGLang':
-            print("validating hf_token for SGLang baseline")
-            sglang_config = config['Serving'].get('SGLang', {})
-            hf_token = sglang_config.get('hf_token')
-            if hf_token == '<YOUR_HF_TOKEN>':
-                raise ValueError("hf_token must be specified in bench-spec.yaml for SGLang baseline")
-        elif baseline == 'Helm-ProductionStack':
-            print("validating hf_token for Helm-ProductionStack baseline")
-            prodstack_config = config['Serving'].get('Helm-ProductionStack', {})
-            hf_token = prodstack_config.get('hf_token')
-            if hf_token == '<YOUR_HF_TOKEN>':
-                raise ValueError("hf_token must be specified in bench-spec.yaml for Helm-ProductionStack baseline")
-        elif baseline == 'Direct-ProductionStack':
-            print("validating hf_token for Direct-ProductionStack baseline")
-            direct_production_stack_config = config['Serving'].get('Direct-ProductionStack', {})
-            model_url = direct_production_stack_config.get('modelURL')
-            hf_token = direct_production_stack_config.get('hf_token')
-            if not model_url:
-                raise ValueError("modelURL must be specified in bench-spec.yaml for Direct-ProductionStack baseline")
-            if not hf_token:
-                raise ValueError("hf_token must be specified in bench-spec.yaml for Direct-ProductionStack baseline")
-        elif baseline == 'Dynamo':
-            print("validating hf_token for Dynamo baseline")
-            pass
-        elif baseline == 'KubeRay':
-            print("validating hf_token for KubeRay baseline")
-            kuberay_config = config['Serving'].get('KubeRay', {})
-            model_url = kuberay_config.get('modelURL')
-            hf_token = kuberay_config.get('hf_token')
-            if not model_url:
-                raise ValueError("modelURL must be specified in bench-spec.yaml for KubeRay baseline")
-            if hf_token == '<YOUR_HF_TOKEN>':
-                raise ValueError("hf_token must be specified in bench-spec.yaml for KubeRay baseline")
-        else:
-            raise ValueError(f"Unsupported baseline: {baseline}")
+        # Validate Name field
+        if 'Name' not in config:
+            raise ValueError("Name field is missing in bench-spec.yaml")
 
-        print("Validated hf_token. run_bench.py now running")
+        # Validate that Serving is a list of baselines
+        if 'Serving' not in config:
+            raise ValueError("Serving configuration is missing in bench-spec.yaml")
+
+        serving_configs = config['Serving']
+        if not isinstance(serving_configs, list):
+            raise ValueError("Serving configuration must be a list of baseline configurations")
+
+        if len(serving_configs) == 0:
+            raise ValueError("At least one serving baseline must be specified")
+
+        # Validate each serving baseline configuration
+        for i, serving_config in enumerate(serving_configs):
+            if not isinstance(serving_config, dict) or len(serving_config) != 1:
+                raise ValueError(f"Serving baseline {i} must be a dict with exactly one key (the baseline type)")
+
+            baseline_type = list(serving_config.keys())[0]
+            baseline_config = serving_config[baseline_type]
+
+            print(f"Validating serving baseline {i}: {baseline_type}")
+
+            if baseline_type == 'SGLang':
+                hf_token = baseline_config.get('hf_token')
+                if hf_token == '<YOUR_HF_TOKEN>':
+                    raise ValueError(f"hf_token must be specified for SGLang baseline {i}")
+            elif baseline_type == 'Helm-ProductionStack':
+                hf_token = baseline_config.get('hf_token')
+                if hf_token == '<YOUR_HF_TOKEN>':
+                    raise ValueError(f"hf_token must be specified for Helm-ProductionStack baseline {i}")
+            elif baseline_type == 'Direct-ProductionStack':
+                model_url = baseline_config.get('modelURL')
+                hf_token = baseline_config.get('hf_token')
+                if not model_url:
+                    raise ValueError(f"modelURL must be specified for Direct-ProductionStack baseline {i}")
+                if not hf_token:
+                    raise ValueError(f"hf_token must be specified for Direct-ProductionStack baseline {i}")
+            elif baseline_type == 'Dynamo':
+                pass  # No validation needed for Dynamo yet
+            elif baseline_type == 'KubeRay':
+                model_url = baseline_config.get('modelURL')
+                hf_token = baseline_config.get('hf_token')
+                if not model_url:
+                    raise ValueError(f"modelURL must be specified for KubeRay baseline {i}")
+                if hf_token == '<YOUR_HF_TOKEN>':
+                    raise ValueError(f"hf_token must be specified for KubeRay baseline {i}")
+            else:
+                raise ValueError(f"Unsupported baseline type: {baseline_type} in baseline {i}")
+
+        print("Validated all serving baselines. run_bench.py now running")
         return config
 
 
@@ -121,77 +137,102 @@ def start_gke_cluster(config: Dict[str, Any]) -> None:
         raise RuntimeError("Failed to set up GKE cluster")
 
 # 2. Baseline Setup
-def setup_baseline(config: Dict[str, Any]) -> None:
-    """Set up the baseline (cluster of serving engines) based on the configuration."""
-    if 'Serving' not in config:
-        raise ValueError("Serving configuration is missing in bench-spec.yaml")
+def generate_baseline_key(serving_config: Dict[str, Any]) -> str:
+    """Generate a baseline key based on the serving configuration."""
+    baseline_type = list(serving_config.keys())[0]
+    baseline_config = serving_config[baseline_type]
 
-    baseline = config['Serving'].get('Baseline')
-    global MODEL_URL # saved for later steps
-    global HF_TOKEN # saved for later steps
-    global KEY # saved for later steps
-    if baseline == 'SGLang':
-        KEY = 'sglang'
-        single_config = config['Serving'].get('SGLang', {})
-        model_url = single_config.get('modelURL')
-        hf_token = single_config.get('hf_token')
-        if not model_url:
-            raise ValueError("modelURL must be specified in bench-spec.yaml for SGLang baseline")
-        if not hf_token:
-            raise ValueError("hf_token must be specified in bench-spec.yaml for SGLang baseline")
-        MODEL_URL = model_url
-        HF_TOKEN = hf_token
-
-        # Set up SGLang
-        sglang_installation(single_config)
-    elif baseline == 'Helm-ProductionStack':
-        KEY = 'stack'
-        prodstack_config = config['Serving'].get('Helm-ProductionStack', {})
-        model_url = prodstack_config.get('modelURL')
-        hf_token = prodstack_config.get('hf_token')
-        if not model_url:
-            raise ValueError("modelURL must be specified in bench-spec.yaml for Helm-ProductionStack baseline")
-        if not hf_token:
-            raise ValueError("hf_token must be specified in bench-spec.yaml for Helm-ProductionStack baseline")
-        MODEL_URL = model_url
-        HF_TOKEN = hf_token
-
-        # helm installation
-        helm_installation(prodstack_config, config)
-    elif baseline == 'Direct-ProductionStack':
-        KEY = 'stack'
-        direct_production_stack_config = config['Serving'].get('Direct-ProductionStack', {})
-        model_url = direct_production_stack_config.get('modelURL')
-        hf_token = direct_production_stack_config.get('hf_token')
-        if not model_url:
-            raise ValueError("modelURL must be specified in bench-spec.yaml for Direct-ProductionStack baseline")
-        if not hf_token:
-            raise ValueError("hf_token must be specified in bench-spec.yaml for Direct-ProductionStack baseline")
-        MODEL_URL = model_url
-        HF_TOKEN = hf_token
-
-        kubernetes_application(direct_production_stack_config, config)
-    elif baseline == 'Dynamo':
-        KEY = 'dynamo'
-        #TODO
-        dynamo_config = config['Serving'].get('Dynamo', {})
-        pass
-    elif baseline == 'KubeRay':
-        KEY = 'kuberay'
-        kuberay_config = config['Serving'].get('KubeRay', {})
-        model_url = kuberay_config.get('modelURL')
-        hf_token = kuberay_config.get('hf_token')
-        if not model_url:
-            raise ValueError("modelURL must be specified in bench-spec.yaml for KubeRay baseline")
-        if not hf_token:
-            raise ValueError("hf_token must be specified in bench-spec.yaml for KubeRay baseline")
-        MODEL_URL = model_url
-        HF_TOKEN = hf_token
-
-        # Set up KubeRay
-        kuberay_installation(kuberay_config)
+    if baseline_type == 'SGLang':
+        return 'sglang'
+    elif baseline_type == 'Helm-ProductionStack':
+        # helm_{lmcache, vllm} depending on useLMCache
+        use_lmcache = baseline_config.get('useLMCache', False)
+        if use_lmcache:
+            return 'helm_lmcache'
+        else:
+            return 'helm_vllm'
+    elif baseline_type == 'Direct-ProductionStack':
+        # Convert kubernetesConfigSelection filepath where "/" becomes "_"
+        k8s_config = baseline_config.get('kubernetesConfigSelection', '')
+        return k8s_config.replace('/', '_').replace('.yaml', '')
+    elif baseline_type == 'Dynamo':
+        return 'dynamo'
+    elif baseline_type == 'KubeRay':
+        return 'rayserve'
     else:
-        raise ValueError(f"Unsupported baseline: {baseline}")
+        raise ValueError(f"Unsupported baseline type: {baseline_type}")
+
+def setup_single_baseline(serving_config: Dict[str, Any], global_config: Dict[str, Any], serving_index: int) -> None:
+    """Set up a single baseline (cluster of serving engines) based on the configuration."""
+    global MODEL_URL, HF_TOKEN, KEY, CURRENT_SERVING_INDEX, CURRENT_SERVING_CONFIG
+
+    # Store current serving info for later use
+    CURRENT_SERVING_INDEX = serving_index
+    CURRENT_SERVING_CONFIG = serving_config
+
+    baseline_type = list(serving_config.keys())[0]
+    baseline_config = serving_config[baseline_type]
+
+    # Generate the proper KEY
+    KEY = generate_baseline_key(serving_config)
+
+    print(f"\n=== Setting up serving baseline {serving_index}: {baseline_type} (key: {KEY}) ===")
+
+    if baseline_type == 'SGLang':
+        model_url = baseline_config.get('modelURL')
+        hf_token = baseline_config.get('hf_token')
+        if not model_url:
+            raise ValueError(f"modelURL must be specified for SGLang baseline {serving_index}")
+        if not hf_token:
+            raise ValueError(f"hf_token must be specified for SGLang baseline {serving_index}")
+        MODEL_URL = model_url
+        HF_TOKEN = hf_token
+        sglang_installation(baseline_config)
+
+    elif baseline_type == 'Helm-ProductionStack':
+        model_url = baseline_config.get('modelURL')
+        hf_token = baseline_config.get('hf_token')
+        if not model_url:
+            raise ValueError(f"modelURL must be specified for Helm-ProductionStack baseline {serving_index}")
+        if not hf_token:
+            raise ValueError(f"hf_token must be specified for Helm-ProductionStack baseline {serving_index}")
+        MODEL_URL = model_url
+        HF_TOKEN = hf_token
+        helm_installation(baseline_config, global_config)
+
+    elif baseline_type == 'Direct-ProductionStack':
+        model_url = baseline_config.get('modelURL')
+        hf_token = baseline_config.get('hf_token')
+        if not model_url:
+            raise ValueError(f"modelURL must be specified for Direct-ProductionStack baseline {serving_index}")
+        if not hf_token:
+            raise ValueError(f"hf_token must be specified for Direct-ProductionStack baseline {serving_index}")
+        MODEL_URL = model_url
+        HF_TOKEN = hf_token
+        kubernetes_application(baseline_config, global_config)
+
+    elif baseline_type == 'Dynamo':
+        # TODO: Implement Dynamo setup
+        pass
+
+    elif baseline_type == 'KubeRay':
+        model_url = baseline_config.get('modelURL')
+        hf_token = baseline_config.get('hf_token')
+        if not model_url:
+            raise ValueError(f"modelURL must be specified for KubeRay baseline {serving_index}")
+        if not hf_token:
+            raise ValueError(f"hf_token must be specified for KubeRay baseline {serving_index}")
+        MODEL_URL = model_url
+        HF_TOKEN = hf_token
+        kuberay_installation(baseline_config)
+
+    else:
+        raise ValueError(f"Unsupported baseline type: {baseline_type}")
+
+def setup_baseline(config: Dict[str, Any]) -> None:
+    """Legacy function - now redirects to setup_single_baseline for backward compatibility."""
+    # This function is kept for backward compatibility but should not be used in the new pipeline
+    raise RuntimeError("setup_baseline() should not be called in the new multi-baseline pipeline")
 
 def sglang_installation(sglang_config: Dict[str, Any]) -> None:
     """
@@ -560,7 +601,11 @@ def sharegpt_run_workload(sharegpt_config: Dict[str, Any]) -> None:
 
     os.chmod(workload_exec_script_path, 0o755)
 
-    global MODEL_URL
+    global MODEL_URL, CURRENT_SERVING_INDEX
+
+    # Read the benchmark name from config
+    config = read_bench_spec()
+    benchmark_name = config.get('Name', 'unknown')
 
     cmd = [str(workload_exec_script_path)]
     cmd.extend([str(MODEL_URL)])
@@ -573,6 +618,8 @@ def sharegpt_run_workload(sharegpt_config: Dict[str, Any]) -> None:
     cmd.extend([str(limit)])
     cmd.extend([str(min_rounds)])
     cmd.extend([str(start_round)])
+    cmd.extend([str(benchmark_name)])
+    cmd.extend([str(CURRENT_SERVING_INDEX)])
     cmd.extend([str(qps) for qps in qps_values])
 
     # Execute the workload
@@ -604,7 +651,11 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
     if not hasattr(run_synthetic, 'share_gpt_generated'):
         run_synthetic.share_gpt_generated = False
 
-    global MODEL_URL
+    global MODEL_URL, CURRENT_SERVING_INDEX
+
+    # Read the benchmark name from config
+    config = read_bench_spec()
+    benchmark_name = config.get('Name', 'unknown')
 
     qps_values = synthetic_config.get('QPS')
     NUM_USERS_WARMUP = synthetic_config.get('NUM_USERS_WARMUP')
@@ -618,7 +669,7 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
         synthetic_sharegpt_data_generation()
         run_synthetic.share_gpt_generated = True
 
-    workload_exec_script_path = Path(__file__).parent / '3-workloads' / 'synthetic' / 'run_synthetic_layerwise.sh'
+    workload_exec_script_path = Path(__file__).parent / '3-workloads' / 'synthetic' / 'run_synthetic.sh'
     if not workload_exec_script_path.exists():
         raise FileNotFoundError(f"Synthetic script not found at {workload_exec_script_path}")
 
@@ -630,11 +681,10 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
     cmd.extend([KEY]) # the key that will be embedded in the filenames of the results
 
     """
+    Updated script signature:
     MODEL=$1
     BASE_URL=$2
     KEY=$3
-
-    # Configuration
     NUM_USERS_WARMUP=$4
     NUM_USERS=$5
     NUM_ROUNDS=$6
@@ -642,6 +692,9 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
     CHAT_HISTORY=$8
     ANSWER_LEN=$9
     USE_SHAREGPT=${10}
+    NAME=${11}
+    SERVING_INDEX=${12}
+    [qps_values...]
     """
     cmd.extend([str(NUM_USERS_WARMUP)])
     cmd.extend([str(NUM_USERS)])
@@ -650,6 +703,8 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
     cmd.extend([str(CHAT_HISTORY)])
     cmd.extend([str(ANSWER_LEN)])
     cmd.extend([str(USE_SHAREGPT)])
+    cmd.extend([str(benchmark_name)])
+    cmd.extend([str(CURRENT_SERVING_INDEX)])
     cmd.extend([str(qps) for qps in qps_values])
 
     # Execute the workload
@@ -663,6 +718,12 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
 
 def run_mooncake(mooncake_config: Dict[str, Any]) -> None:
     """Run the Mooncake workload with the specified configuration."""
+    global MODEL_URL, CURRENT_SERVING_INDEX
+
+    # Read the benchmark name from config
+    config = read_bench_spec()
+    benchmark_name = config.get('Name', 'unknown')
+
     qps_values = mooncake_config.get('QPS')
     NUM_ROUNDS = mooncake_config.get('NUM_ROUNDS')
     SYSTEM_PROMPT = mooncake_config.get('SYSTEM_PROMPT')
@@ -675,8 +736,6 @@ def run_mooncake(mooncake_config: Dict[str, Any]) -> None:
 
     os.chmod(workload_exec_script_path, 0o755)
 
-    global MODEL_URL
-
     cmd = [str(workload_exec_script_path)]
     cmd.extend([str(MODEL_URL)])
     cmd.extend(["http://localhost:30080/v1/"]) # the base URL when serving with production stack
@@ -685,6 +744,8 @@ def run_mooncake(mooncake_config: Dict[str, Any]) -> None:
     cmd.extend([str(SYSTEM_PROMPT)])
     cmd.extend([str(CHAT_HISTORY)])
     cmd.extend([str(ANSWER_LEN)])
+    cmd.extend([str(benchmark_name)])
+    cmd.extend([str(CURRENT_SERVING_INDEX)])
 
     # Execute the workload
     print(f"Running Mooncake workload with parameters: {' '.join(cmd)}")
@@ -697,20 +758,12 @@ def run_mooncake(mooncake_config: Dict[str, Any]) -> None:
 
 def run_agentic(agentic_config: Dict[str, Any]) -> None:
     """Run the Agentic workload with the specified configuration."""
-    """
+    global MODEL_URL, CURRENT_SERVING_INDEX
 
-    MODEL_LIST="$1"
-    BASE_URL=$2
-    KEY=$3
+    # Read the benchmark name from config
+    config = read_bench_spec()
+    benchmark_name = config.get('Name', 'unknown')
 
-    # Configuration
-    NUM_USERS_WARMUP=$4
-    NUM_AGENTS=$5
-    NUM_ROUNDS=$6
-    SYSTEM_PROMPT=$7
-    CHAT_HISTORY=$8
-    ANSWER_LEN=$9
-    """
     NEW_USER_INTERVALS = agentic_config.get('NEW_USER_INTERVALS')
     NUM_USERS_WARMUP = agentic_config.get('NUM_USERS_WARMUP')
     NUM_AGENTS = agentic_config.get('NUM_AGENTS')
@@ -725,8 +778,6 @@ def run_agentic(agentic_config: Dict[str, Any]) -> None:
 
     os.chmod(workload_exec_script_path, 0o755)
 
-    global MODEL_URL
-
     cmd = [str(workload_exec_script_path)]
     cmd.extend([str(MODEL_URL)])
     cmd.extend(["http://localhost:30080/v1/"]) # the base URL when serving with production stack
@@ -737,6 +788,8 @@ def run_agentic(agentic_config: Dict[str, Any]) -> None:
     cmd.extend([str(SYSTEM_PROMPT)])
     cmd.extend([str(CHAT_HISTORY)])
     cmd.extend([str(ANSWER_LEN)])
+    cmd.extend([str(benchmark_name)])
+    cmd.extend([str(CURRENT_SERVING_INDEX)])
     cmd.extend([str(interval) for interval in NEW_USER_INTERVALS])
 
     # Execute the workload
@@ -747,6 +800,7 @@ def run_agentic(agentic_config: Dict[str, Any]) -> None:
         print("Agentic workloads completed successfully")
     else:
         raise RuntimeError("Failed to run Agentic workload")
+
 def clean_up() -> None:
     """
     Does not need to specified in the bench-spec.yaml configuration
@@ -800,16 +854,18 @@ def main() -> None:
         # Read the configuration
         config = read_bench_spec()
 
-        # 1. Set up infrastructure
+        # 1. Set up infrastructure (only once)
         if args.start_from <= 1:
             setup_infrastructure(config)
 
-        # 2. Set up baseline (cluster of serving engines)
+        # 2 & 3. Run cartesian product of serving baselines and workloads
         if args.start_from <= 2:
-            setup_baseline(config)
-
-        # 3. Run the specified workload
-        run_workload(config)
+            run_cartesian_product(config)
+        else:
+            # If starting from stage 3, we need injected values
+            if not MODEL_URL or not HF_TOKEN or not KEY:
+                raise ValueError("When starting from stage 3, --model-url, --hf-token, and --key must be provided")
+            run_workload(config)
 
     except Exception as e:
         print(f"Benchmarking Error: {str(e)}")
@@ -817,6 +873,35 @@ def main() -> None:
 
     finally:
         clean_up()
+
+def run_cartesian_product(config: Dict[str, Any]) -> None:
+    """Run the cartesian product of serving baselines and workloads."""
+    serving_configs = config['Serving']
+
+    for serving_index, serving_config in enumerate(serving_configs):
+        try:
+            print(f"\n{'='*60}")
+            print(f"SERVING BASELINE {serving_index + 1}/{len(serving_configs)}")
+            print(f"{'='*60}")
+
+            # 2. Set up this serving baseline
+            setup_single_baseline(serving_config, config, serving_index)
+
+            # 3. Run all workloads for this serving baseline
+            run_workload(config)
+
+            print(f"\n=== Completed serving baseline {serving_index}: {list(serving_config.keys())[0]} ===")
+
+        except Exception as e:
+            print(f"Error with serving baseline {serving_index}: {str(e)}")
+            # Continue with next serving baseline
+            continue
+
+        finally:
+            # Clean up after each serving baseline (except the last one, which is handled in main)
+            if serving_index < len(serving_configs) - 1:
+                print(f"Cleaning up after serving baseline {serving_index}...")
+                clean_up()
 
 if __name__ == "__main__":
     main()

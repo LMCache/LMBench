@@ -1,12 +1,14 @@
-# 1. Infrastructure
+Name: <NAME_OF_BENCHMARK_SUITE> # e.g. layerwise, routing, pd, etc.
+
+# 1-infrastructure/
 Infrastructure:
-  # Option 0: None (when pushing changes that should not run any workflows)
+  # Choose exactly one of the following:
+
+  # Option 1: do not run any workflows
   Location: NoBench
-
-  # Option 1: Minikube (local clone of this repo)
+  # Option 2: local clone of this repo
   Location: LocalMinikube
-
-  # Option 2: LMCacheGKE (workflow will run on LMCache GPU runner)
+  # Option 3: running on LMCache GKE cluster
   Location: LMCacheGKE
   numClusterGPUs: 1
   A100_VRAM: 40 # either 40 or 80 (80 is difficult to obtain on GCP so will run as "spot" and may fail)
@@ -19,76 +21,67 @@ Infrastructure:
   # so we recommend using 8x 40GB A100s with TP 8 for llama 3.1 70B
   # or 2x 80GB A100s with TP 2 for llama 3.1 70B
 
-# 2. Serving Baseline
+# 2-serving-engines/
 Serving:
-  # Option 1: Helm-ProductionStack (Uses the latest helm repository from production-stack)
-  # PLEASE make sure that replicaCount x numGPUs <= numClusterGPUs
-  Baseline: Helm-ProductionStack
-  Helm-ProductionStack:
-    vLLM-Version: 0 # vllm v0 or v1
-    enablePrefixCaching: false # vllm v1 specific only (no prefix caching in v0)
-    useLMCache: false # true or false
-    modelURL: meta-llama/Llama-3.1-8B-Instruct
-    replicaCount: 1 # PLEASE make sure that replicaCount x numGPUs <= numClusterGPUs
-    numGPUs: 1 # PLEASE make sure that replicaCount x numGPUs <= numClusterGPUs
-    numCPUs: 4 # PLEASE look at the vCPU limits in the comment above (try to keep 12 or below)
-    tensorParallelSize: 1 # please make sure tensorParallelSize <= numGPUs (this is the number of GPUs per replica)
-    hf_token: <YOUR_HF_TOKEN>
-    maxModelLen: 16384
+  # Choose one or more of the following. You can have multiple of each as well.
 
-  # Option 2: Direct-ProductionStack
-  # This will allow us to test various configurations using production stack directly (choosing various images of lmcache and routers):
-  # PD vs Non-PD
-  # KV Cache Aware Routing
-  # Prefix Aware Routing
-  # Layer by layer pipelining
-  # Any novel lmcache or production stack features can be tested here with their docker images
-  Baseline: Direct-ProductionStack
-  Direct-ProductionStack:
-    kubernetesConfigSelection: <NAME_OF_K8S_CONFIG_FILENAME> # please end with .yaml
+  # use the latest helm repository from production-stack
+  - Helm-ProductionStack:
+      vLLM-Version: 0
+      enablePrefixCaching: false # vllm v1 specific only (no prefix caching in v0)
+      useLMCache: false
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+      replicaCount: 1 # PLEASE make sure that replicaCount x numGPUs <= numClusterGPUs
+      numGPUs: 1 # PLEASE make sure that replicaCount x numGPUs <= numClusterGPUs
+      numCPUs: 4 # PLEASE look at the vCPU limits in the comment above (try to keep 12 or below)
+      tensorParallelSize: 1 # please make sure tensorParallelSize <= numGPUs (this is the number of GPUs per replica)
+
+      # You do NOT need to specify hf_token if you are using LMCacheGKE
+      hf_token: <YOUR_HF_TOKEN>
+      maxModelLen: 16384
+
+  # Any novel lmcache or production stack features can be tested here (before they are helm released)
+  - Direct-ProductionStack:
       # this will start in the `2-serving-engines/direct-production-stack/kubernetes_configurations/` directory
       # generally this will be some modification after directly helm rendering the producttion stack helm chart
-    hf_token: <YOUR_HF_TOKEN>
-    modelURL: <MODEL_USED_IN_K8S_CONFIG>
-      # even though the model is hardcoded into the kubernetes config, we still need to specify it here
-      # because the workload stage requires knowledge of the modelURL to tokenize and send requests
+      # examples:
+      # - kubernetesConfigSelection: routing/lmcache_roundrobin.yaml
+      # - kubernetesConfigSelection: routing/lmcache_random.yaml
+      # - kubernetesConfigSelection: routing/lmcache_roundrobin_with_prefix_caching.yaml
+      kubernetesConfigSelection: <NAME_OF_K8S_CONFIG_FILENAME>
+
+      # You do NOT need to specify hf_token if you are using LMCacheGKE
+      hf_token: <YOUR_HF_TOKEN>
+      # Please make sure you are using the correct modelURL for the kubernetes config you are using so that the workload generator can select the correct model
+      modelURL: <MODEL_USED_IN_K8S_CONFIG>
 
   # Option 3: SGLang
-  Baseline: SGLang
-  SGLang:
-    modelURL: meta-llama/Llama-3.1-8B-Instruct # specify your model
-    hf_token: <YOUR_HF_TOKEN>
-    replicaCount: 1 # number of replicas to run
-    numGPUs: 1 # number of GPUs per replica
-    numCPUs: 10 # number of CPUs per replica
-    requestMemory: "50Gi" # memory request per replica
-    shmSize: "20Gi" # shared memory size
-    cacheSize: "50Gi" # size of the HuggingFace cache volume
-    contextLength: 32768 # context length for the model
-    tensorParallelSize: 1 # tensor parallel size for model distribution across GPUs
+  - SGLang:
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+
+      # You do NOT need to specify hf_token if you are using LMCacheGKE
+      hf_token: <YOUR_HF_TOKEN>
+      replicaCount: 1
+      numGPUs: 1 # number of GPUs per replica
+      numCPUs: 10 # number of CPUs per replica
+      requestMemory: "50Gi" # memory request per replica
+      shmSize: "20Gi" # shared memory size
+      cacheSize: "50Gi" # size of the HuggingFace cache volume
+      contextLength: 32768 # context length for the model
+      tensorParallelSize: 1 # tensor parallel size for model distribution across GPUs
 
   # Option 4: Dynamo
-  Baseline: Dynamo
-  Dynamo:
-    # Coming soon...
+  - Dynamo:
+      # Coming soon...
 
   # Option 5: KubeRay (Broken ATM)
-  Baseline: KubeRay
-  KubeRay:
-    modelURL: meta-llama/Llama-3.1-8B-Instruct # the model to serve
-    hf_token: <YOUR_HF_TOKEN>
-    headGPUs: 1 # GPUs for the head node
-    workerGPUs: 1 # GPUs per worker
-    numWorkers: 1 # Number of worker nodes
-    headCPUs: 2 # CPUs for the head node
-    workerCPUs: 2 # CPUs per worker
-    headMemory: "4G" # Memory for the head node
-    workerMemory: "4G" # Memory per worker
-    modelCacheSize: "20Gi" # Size of the model cache volume
+  - KubeRay:
+      # Coming soon...
 
-# 3. Workload
+# 3-workloads/
 Workload:
   # Multiple workloads can be specified and they will all be run.
+
   ShareGPT:
     - LIMIT: 1000
       MIN_ROUNDS: 10

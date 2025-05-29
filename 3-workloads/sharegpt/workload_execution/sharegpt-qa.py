@@ -48,6 +48,8 @@ def parse_args() -> argparse.Namespace:
                         help="Maximum time to run the benchmark in seconds")
     parser.add_argument("--verbose", action="store_true",
                         help="Enable DEBUG logging")
+    parser.add_argument("--request-with-user-id", action="store_true", default=True,
+                        help="Whether to include user id in request headers")
     return parser.parse_args()
 
 # ---------------------------------------------------------------------------
@@ -76,7 +78,7 @@ class RequestExecutor:
         self.model = model
         self.loop = AsyncLoopWrapper.GetOrStartLoop()
 
-    async def _async_request(self, messages, max_tokens: int) -> Response:
+    async def _async_request(self, messages, max_tokens: int, extra_headers=None) -> Response:
         start = time.time()
         first_token: Optional[float] = None
         body = ""
@@ -89,6 +91,7 @@ class RequestExecutor:
                 stream=True,
                 max_tokens=max_tokens,
                 stream_options={"include_usage": True},
+                extra_headers=extra_headers,
             )
 
             async for chunk in stream:
@@ -114,10 +117,11 @@ class RequestExecutor:
             logger.error(f"Error in request: {str(e)}")
             raise
 
-    def launch_request(self, prompt: str, max_tokens: int, on_finish) -> None:
+    def launch_request(self, prompt: str, max_tokens: int, on_finish, user_id=None) -> None:
         messages = [{"role": "user", "content": prompt}]
+        extra_headers = {"x-user-id": str(user_id)} if user_id is not None else None
         fut = asyncio.run_coroutine_threadsafe(
-            self._async_request(messages, max_tokens), self.loop)
+            self._async_request(messages, max_tokens, extra_headers), self.loop)
         fut.add_done_callback(lambda f: on_finish(f.result()))
 
 # ---------------------------------------------------------------------------
@@ -127,7 +131,7 @@ class RequestExecutor:
 class BenchmarkRunner:
     """Dispatch prompts at desired QPS and collect latency metrics."""
 
-    def __init__(self, prompts: List[dict], executor: RequestExecutor, qps: float, time_limit: Optional[int] = None):
+    def __init__(self, prompts: List[dict], executor: RequestExecutor, qps: float, time_limit: Optional[int] = None, request_with_user_id: bool = False):
         self.prompts = prompts
         self.executor = executor
         self.qps = qps
@@ -135,6 +139,7 @@ class BenchmarkRunner:
         self.results: List[Response] = []
         self._next_idx = 0
         self.start_time = time.time()
+        self.request_with_user_id = request_with_user_id
 
     def _on_finish(self, resp: Response):
         self.results.append(resp)
@@ -156,7 +161,11 @@ class BenchmarkRunner:
             entry = self.prompts[self._next_idx]
             prompt = str(self.qps) + " " + entry["input"] # To avoid cache hit cross run
             max_tokens = entry.get("output_length", 1)
-            self.executor.launch_request(prompt, max_tokens, self._on_finish)
+
+            # Add user_id if enabled
+            user_id = self._next_idx if self.request_with_user_id else None
+            self.executor.launch_request(prompt, max_tokens, self._on_finish, user_id)
+
             self._next_idx += 1
 
         AsyncLoopWrapper.WaitLoop()  # wait for inflight requests
@@ -205,7 +214,7 @@ def main():
         executor = RequestExecutor(args.base_url, "EMPTY", args.model)
 
         # Run benchmark
-        runner = BenchmarkRunner(prompts, executor, args.qps, args.time)
+        runner = BenchmarkRunner(prompts, executor, args.qps, args.time, args.request_with_user_id)
         df = runner.run()
 
         # Write results

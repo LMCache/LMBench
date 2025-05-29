@@ -5,8 +5,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../../" && pwd )"
 cd "$SCRIPT_DIR"
 
-if [[ $# -ne 7 ]]; then
-    echo "Usage: $0 <model> <base url> <save file key> <num rounds> <system prompt> <chat history> <answer len>"
+if [[ $# -lt 9 ]]; then
+    echo "Usage: $0 <model> <base url> <save file key> <num rounds> <system prompt> <chat history> <answer len> <name> <serving_index>"
+    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:8000 test 10 0 256 20 layerwise-benchmark 0"
     exit 1
 fi
 
@@ -19,6 +20,8 @@ NUM_ROUNDS=$4
 SYSTEM_PROMPT=$5 # Shared system prompt length
 CHAT_HISTORY=$6 # User specific chat history length
 ANSWER_LEN=$7 # Generation length per round
+NAME=$8
+SERVING_INDEX=$9
 
 run_mooncake() {
     # $1: qps
@@ -57,13 +60,15 @@ for qps in "${QPS_VALUES[@]}"; do
     cd "$PROJECT_ROOT"
     python3 "4-latest-results/post-processing/summarize.py" \
         "${output_file#../../}" \
+        NAME="$NAME" \
         KEY="$KEY" \
         WORKLOAD="mooncake" \
         NUM_ROUNDS="$NUM_ROUNDS" \
         SYSTEM_PROMPT="$SYSTEM_PROMPT" \
         CHAT_HISTORY="$CHAT_HISTORY" \
         ANSWER_LEN="$ANSWER_LEN" \
-        QPS="$qps"
+        QPS="$qps" \
+        SERVING_INDEX="$SERVING_INDEX"
 
     # Change back to script directory
     cd "$SCRIPT_DIR"

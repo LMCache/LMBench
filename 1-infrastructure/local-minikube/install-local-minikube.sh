@@ -8,19 +8,25 @@ HELPERS_DIR="$SCRIPT_DIR/helpers"
 
 echo "Starting local Kubernetes environment setup..."
 
-# Install kubectl
-echo "Installing kubectl..."
-bash "$HELPERS_DIR/install-kubectl.sh"
+# Check and install kubectl if needed
+if kubectl version --client &>/dev/null; then
+  echo "kubectl is already installed, skipping installation."
+else
+  echo "Installing kubectl..."
+  bash "$HELPERS_DIR/install-kubectl.sh"
+  # Confirm kubectl is installed
+  kubectl version --client || { echo "kubectl installation failed"; exit 1; }
+fi
 
-# Confirm kubectl is installed
-kubectl version --client || { echo "kubectl installation failed"; exit 1; }
-
-# Install helm
-echo "Installing helm..."
-bash "$HELPERS_DIR/install-helm.sh"
-
-# Confirm helm is installed
-helm version || { echo "helm installation failed"; exit 1; }
+# Check and install helm if needed
+if helm version &>/dev/null; then
+  echo "helm is already installed, skipping installation."
+else
+  echo "Installing helm..."
+  bash "$HELPERS_DIR/install-helm.sh"
+  # Confirm helm is installed
+  helm version || { echo "helm installation failed"; exit 1; }
+fi
 
 # Ensure Docker is installed
 if ! command -v docker &>/dev/null; then
@@ -36,7 +42,7 @@ if ! docker info &>/dev/null; then
   if sudo usermod -aG docker "$USER"; then
     echo "User $USER added to docker group."
 
-    # Apply group change (won’t affect parent shell)
+    # Apply group change (won't affect parent shell)
     echo "Starting a new shell with docker group permissions..."
     exec sg docker "$0" "$@"  # re-run this script inside the docker group shell
   else
@@ -48,15 +54,19 @@ else
   echo "Docker is accessible."
 fi
 
-# Install and configure minikube
-echo "Installing and configuring minikube..."
-bash "$HELPERS_DIR/install-minikube-cluster.sh"
+# Check and install minikube if needed
+if command -v minikube &>/dev/null && minikube status &>/dev/null; then
+  echo "minikube is already installed and running, skipping installation and configuration."
+else
+  echo "Installing and configuring minikube..."
+  bash "$HELPERS_DIR/install-minikube-cluster.sh"
 
-# Confirm minikube is installed
-minikube version || { echo "minikube installation failed"; exit 1; }
+  # Confirm minikube is installed
+  minikube version || { echo "minikube installation failed"; exit 1; }
 
-# Confirm minikube is running
-minikube status || { echo "minikube not running"; exit 1; }
+  # Confirm minikube is running
+  minikube status || { echo "minikube not running"; exit 1; }
+fi
 
 # Confirm minikube has at least one GPU enabled
 if kubectl describe nodes | grep -q "nvidia.com/gpu"; then
@@ -66,4 +76,4 @@ else
   exit 1
 fi
 
-echo "Local minikube Kubernetes environment setup completed successfully!!"
+echo "Local minikube Kubernetes environment setup is running with GPU access"

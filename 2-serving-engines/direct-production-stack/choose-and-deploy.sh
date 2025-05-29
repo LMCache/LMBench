@@ -36,15 +36,15 @@ fi
 
 # Clean up any existing deployments to avoid conflicts
 echo "Cleaning up any existing deployments..."
-kubectl delete deployment -l model=llama3 --ignore-not-found=true
+kubectl get deployment | grep "deployment-vllm" | grep -v "router" | awk '{print $1}' | xargs -r kubectl delete deployment --ignore-not-found=true
 kubectl delete deployment -l environment=router --ignore-not-found=true
-kubectl delete pods -l model=llama3 --ignore-not-found=true
+kubectl get pods | grep "deployment-vllm" | grep -v "router" | awk '{print $1}' | xargs -r kubectl delete pods --ignore-not-found=true
 kubectl delete pods -l environment=router --ignore-not-found=true
 
 # Wait for all resources to be fully deleted
 echo "Waiting for all resources to be fully deleted..."
 while true; do
-  PODS=$(kubectl get pods -l model=llama3 2>/dev/null | grep -v "No resources found" || true)
+  PODS=$(kubectl get pods | grep "deployment-vllm" | grep -v "router" 2>/dev/null || true)
   ROUTER_PODS=$(kubectl get pods -l environment=router 2>/dev/null | grep -v "No resources found" || true)
 
   if [ -z "$PODS" ] && [ -z "$ROUTER_PODS" ]; then
@@ -145,7 +145,7 @@ else
   DEPLOYMENTS=$(kubectl get deployments -o name 2>/dev/null)
   if [ $? -eq 0 ]; then
       # Find vllm model deployments that match our pattern
-      VLLM_DEPLOYMENTS=$(echo "$DEPLOYMENTS" | grep -E 'deployment.*/vllm-.*deployment-vllm|deployment.*model=llama3')
+      VLLM_DEPLOYMENTS=$(echo "$DEPLOYMENTS" | grep -E 'deployment.*/vllm-.*deployment-vllm')
 
       if [ -n "$VLLM_DEPLOYMENTS" ]; then
           echo "$VLLM_DEPLOYMENTS" | while read deploy; do
@@ -164,7 +164,7 @@ else
 
   # Also patch the deployment strategy to reduce max surge to 0 (create new pods only after old ones are terminated)
   echo "Patching deployment strategy to avoid creating excess pods..."
-  VLLM_DEPLOYMENTS=$(kubectl get deployments -l model=llama3 -o name 2>/dev/null)
+  VLLM_DEPLOYMENTS=$(kubectl get deployments | grep "deployment-vllm" | grep -v "router" | awk '{print $1}' | sed 's/^/deployment.apps\//' 2>/dev/null)
   if [ -n "$VLLM_DEPLOYMENTS" ]; then
       echo "$VLLM_DEPLOYMENTS" | while read deploy; do
           kubectl patch $deploy \
@@ -228,6 +228,15 @@ while true; do
 done
 
 echo "Ready for port forwarding!"
+
+echo "Checking for any process using port 30080..."
+PID_ON_30080=$(sudo lsof -t -i :30080 2>/dev/null)
+if [[ -n "$PID_ON_30080" ]]; then
+  echo "Found process on port 30080 (PID: $PID_ON_30080). Killing it..."
+  sudo kill -9 "$PID_ON_30080" || echo "  ❗️ Failed to kill PID $PID_ON_30080"
+else
+  echo "✅ Port 30080 is free."
+fi
 
 # Start port forwarding in the background
 kubectl port-forward svc/vllm-router-service 30080:80 &

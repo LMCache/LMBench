@@ -5,9 +5,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../../" && pwd )"
 cd "$SCRIPT_DIR"
 
-if [[ $# -lt 3 ]]; then
-    echo "Usage: $0 \"<model list>\" <base url> <save file key> [qps_values...]"
-    echo "Example: $0 \"meta-llama/Llama-3.1-8B-Instruct\" http://localhost:8000 test 15 20 25"
+if [[ $# -lt 11 ]]; then
+    echo "Usage: $0 \"<model list>\" <base url> <save file key> <num_users_warmup> <num_agents> <num_rounds> <system_prompt> <chat_history> <answer_len> <name> <serving_index> [new_user_intervals...]"
+    echo "Example: $0 \"meta-llama/Llama-3.1-8B-Instruct\" http://localhost:8000 test 100 10 10 0 100 20 layerwise-benchmark 0 1 2"
     exit 1
 fi
 
@@ -22,10 +22,12 @@ NUM_ROUNDS=$6
 SYSTEM_PROMPT=$7
 CHAT_HISTORY=$8
 ANSWER_LEN=$9
+NAME=${10}
+SERVING_INDEX=${11}
 
 # Optional QPS-like values (we'll use as new-user-intervals here)
-if [ $# -gt 9 ]; then
-    NEW_USER_INTERVALS=("${@:10}")
+if [ $# -gt 11 ]; then
+    NEW_USER_INTERVALS=("${@:12}")
 else
     NEW_USER_INTERVALS=(2)  # Default new user interval
 fi
@@ -87,6 +89,7 @@ for interval in "${NEW_USER_INTERVALS[@]}"; do
     cd "$PROJECT_ROOT"
     python3 "4-latest-results/post-processing/summarize.py" \
         "${output_file#../../}" \
+        NAME="$NAME" \
         KEY="$KEY" \
         WORKLOAD="agentic" \
         NUM_USERS_WARMUP="$NUM_USERS_WARMUP" \
@@ -95,7 +98,8 @@ for interval in "${NEW_USER_INTERVALS[@]}"; do
         SYSTEM_PROMPT="$SYSTEM_PROMPT" \
         CHAT_HISTORY="$CHAT_HISTORY" \
         ANSWER_LEN="$ANSWER_LEN" \
-        NEW_USER_INTERVAL="$interval"
+        NEW_USER_INTERVAL="$interval" \
+        SERVING_INDEX="$SERVING_INDEX"
 
     # Change back to script directory
     cd "$SCRIPT_DIR"

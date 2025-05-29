@@ -7,9 +7,9 @@ cd "$SCRIPT_DIR"
 
 # Set the path to the 4-latest-results directory
 
-if [[ $# -lt 3 ]]; then
-    echo "Usage: $0 <model> <base url> <save file key> [qps_values...]"
-    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:8000 /mnt/requests/sharegpt-run1 1.34 2.0 3.0"
+if [[ $# -lt 8 ]]; then
+    echo "Usage: $0 <model> <base url> <save file key> <limit> <min_rounds> <start_round> <name> <serving_index> [qps_values...]"
+    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:8000 /mnt/requests/sharegpt-run1 1000 10 0 layerwise-benchmark 0 1.34 2.0 3.0"
     exit 1
 fi
 
@@ -19,10 +19,12 @@ KEY=$3
 LIMIT=$4
 MIN_ROUNDS=$5
 START_ROUND=$6
+NAME=$7
+SERVING_INDEX=$8
 
 # If QPS values are provided, use them; otherwise use default
-if [[ $# -gt 6 ]]; then
-    QPS_VALUES=("${@:7}")
+if [[ $# -gt 8 ]]; then
+    QPS_VALUES=("${@:9}")
 else
     QPS_VALUES=(1.34)  # Default QPS value
 fi
@@ -68,12 +70,14 @@ for qps in "${QPS_VALUES[@]}"; do
     cd "$PROJECT_ROOT"
     python3 "4-latest-results/post-processing/summarize.py" \
         "${output_file#../../../}" \
+        NAME="$NAME" \
         KEY="$KEY" \
         WORKLOAD="sharegpt" \
         LIMIT="$LIMIT" \
         MIN_ROUNDS="$MIN_ROUNDS" \
         START_ROUND="$START_ROUND" \
-        QPS="$qps"
+        QPS="$qps" \
+        SERVING_INDEX="$SERVING_INDEX"
     # Change back to script directory
     cd "$SCRIPT_DIR"
 done

@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Ignore ALL csv and json files
+**/*.csv
+**/*.json
+
 # Distribution / packaging
 .Python
 build/

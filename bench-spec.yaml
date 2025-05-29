@@ -1,29 +1,41 @@
+Name: layerwise-benchmark
+
 Infrastructure:
   # Location: NoBench # when pushing changes that should not run any workflows
-  # Location: LocalMinikube
-  Location: LMCacheGKE
-  numClusterGPUs: 1
-  A100_VRAM: 40
+  Location: LocalMinikube
+  # Location: LMCacheGKE
+  # numClusterGPUs: 1
+  # A100_VRAM: 40
 
 Serving:
-  Baseline: Direct-ProductionStack
-  Direct-ProductionStack:
-    kubernetesConfigSelection: layerwise/w.yaml
-    hf_token: <YOUR_HF_TOKEN> # do NOT modify if you are using LMCacheGKE (keep as <YOUR_HF_TOKEN>). This is only needed for LocalMinikube
-    modelURL: meta-llama/Llama-3.1-8B-Instruct
+  - Direct-ProductionStack:
+      kubernetesConfigSelection: routing/lmcache_roundrobin.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: mistralai/Mistral-7B-Instruct-v0.2
+  - Direct-ProductionStack:
+      kubernetesConfigSelection: routing/lmcache_session.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: mistralai/Mistral-7B-Instruct-v0.2
+  - Direct-ProductionStack:
+      kubernetesConfigSelection: routing/lmcache_prefixaware.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: mistralai/Mistral-7B-Instruct-v0.2
+  - Direct-ProductionStack:
+      kubernetesConfigSelection: routing/lmcache_kvaware.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: mistralai/Mistral-7B-Instruct-v0.2
 
-#   Baseline: Helm-ProductionStack
-#   Helm-ProductionStack:
-#     vLLM-Version: 0 # vllm v0 or v1
-#     enablePrefixCaching: false # vllm v1 specific only (no prefix caching in v0)
-#     useLMCache: false # true or false
-#     modelURL: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
-#     replicaCount: 1 # PLEASE make sure that replicaCount x numGPUs <= numClusterGPUs
-#     numGPUs: 1 # PLEASE make sure that replicaCount x numGPUs <= numClusterGPUs
-#     numCPUs: 4 # PLEASE look at the vCPU limits in the comment above (try to keep 12 or below)
-#     tensorParallelSize: 1 # please make sure tensorParallelSize <= numGPUs (this is the number of GPUs per replica)
-#     hf_token: <YOUR_HF_TOKEN> # do NOT modify if you are using LMCacheGKE (keep as <YOUR_HF_TOKEN>). This is only needed for LocalMinikube
-#     maxModelLen: 16384
+#   - Helm-ProductionStack:
+#       vLLM-Version: 0 # vllm v0 or v1
+#       enablePrefixCaching: false # vllm v1 specific only (no prefix caching in v0)
+#       useLMCache: false # true or false
+#       modelURL: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+#       replicaCount: 1 # PLEASE make sure that replicaCount x numGPUs <= numClusterGPUs
+#       numGPUs: 1 # PLEASE make sure that replicaCount x numGPUs <= numClusterGPUs
+#       numCPUs: 4 # PLEASE look at the vCPU limits in the comment above (try to keep 12 or below)
+#       tensorParallelSize: 1 # please make sure tensorParallelSize <= numGPUs (this is the number of GPUs per replica)
+#       hf_token: <YOUR_HF_TOKEN> # do NOT modify if you are using LMCacheGKE (keep as <YOUR_HF_TOKEN>). This is only needed for LocalMinikube
+#       maxModelLen: 16384
 
 Workload:
 
@@ -61,7 +73,7 @@ Workload:
       SYSTEM_PROMPT: 0
       CHAT_HISTORY: 8000
       ANSWER_LEN: 20
-      QPS: [0.5, 1, 1.5, 1.6, 1.7, 2]
+      QPS: [0.5]
       USE_SHAREGPT: false
 
   # Mooncake:

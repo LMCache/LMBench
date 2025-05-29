@@ -18,6 +18,7 @@ Tips when modifying `helm/values.yaml`
 - remove the line      "runtimeClassName: nvidia" (or any line containing "runtimeClassName")
 - substitute lmcacheConfig.enabled: {true, false}
 - comment out modelSpec: []
+- best to use `v1: 1` for the serving engines
 - remove line      enableChunkedPrefill: false (or any line containing "enableChunkedPrefill")
 - substitute modelURL, name, and model entries (key names) with the given modelURL from bench-spec.yaml
 - change "LMCacheConnector" to "LMCacheConnectorV1"

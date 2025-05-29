@@ -23,13 +23,13 @@ metadata:
   namespace: default
 type: Opaque
 data:
-  hf_token_llama3: "aGZfYmFjUHFjaE5CY0NtcWlXT2tmYUZiUkZaZXRXT1FjU2dkYw=="
+  hf_token_mistral: "aGZfY0t1Y01ieXJKSVZObUtqUmJJRGVJdmFMYXVzVVp5YkhHdA=="
 ---
 # Source: vllm-stack/templates/pvc.yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: "vllm-llama3-storage-claim"
+  name: "vllm-mistral-storage-claim"
   namespace: default
 spec:
   accessModes:
@@ -37,6 +37,7 @@ spec:
   resources:
     requests:
       storage: 50Gi  # Default to 20Gi if not set
+  storageClassName: standard
 ---
 # Source: vllm-stack/templates/role.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -88,7 +89,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: "vllm-llama3-engine-service"
+  name: "vllm-mistral-engine-service"
   namespace: default
   labels:
     environment: test
@@ -105,7 +106,7 @@ spec:
       targetPort: zmq-port
       protocol: TCP
   selector:
-    model: "llama3"
+    model: "mistral"
     helm-release-name: "vllm"
 ---
 # Source: vllm-stack/templates/deployment-router.yaml
@@ -161,10 +162,10 @@ spec:
         resources:
           requests:
             cpu: "2"
-            memory: "8G"
+            memory: "8Gi"
           limits:
             cpu: "2"
-            memory: "8G"
+            memory: "8Gi"
         ports:
           - name: "router-cport"
             containerPort: 8000
@@ -180,10 +181,10 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: "vllm-llama3-deployment-vllm"
+  name: "vllm-mistral-deployment-vllm"
   namespace: default
   labels:
-    model: llama3
+    model: mistral
     helm-release-name: vllm
     environment: test
     release: test
@@ -191,11 +192,11 @@ spec:
   replicas: 1
   strategy:
     rollingUpdate:
-      maxSurge: 100%
-      maxUnavailable: 0
+      maxSurge: 0
+      maxUnavailable: 100%
   selector:
     matchLabels:
-      model: llama3
+      model: mistral
       helm-release-name: vllm
       environment: test
       release: test
@@ -203,30 +204,43 @@ spec:
   template:
     metadata:
       labels:
-        model: llama3
+        model: mistral
         helm-release-name: vllm
         environment: test
         release: test
     spec:
+      initContainers:
+        - name: my-container
+          image: busybox
+          command:
+            - sh
+          volumeMounts:
+            - name: vllm-storage
+              mountPath: /data
       containers:
         - name: "vllm"
           image: "lmcache/vllm-openai:latest"
           command:
           - "/opt/venv/bin/vllm"
           - "serve"
-          - "meta-llama/Llama-3.1-8B-Instruct"
+          - "mistralai/Mistral-7B-Instruct-v0.2"
           - "--host"
           - "0.0.0.0"
           - "--port"
           - "8000"
           - "--no-enable-prefix-caching"
           - "--max-model-len"
-          - "32000"
+          - "16384"
           - "--dtype"
           - "bfloat16"
+          - "--max-num-seqs"
+          - "32"
+          - "--gpu_memory_utilization"
+          - "0.95"
+          - "--max_loras"
+          - "4"
           - "--disable-log-requests"
-          - "--swap-space"
-          - "0"
+          - "--trust-remote-code"
           - "--kv-transfer-config"
           - '{"kv_connector":"LMCacheConnectorV1","kv_role":"kv_both"}'
           securityContext:
@@ -245,17 +259,15 @@ spec:
             valueFrom:
               secretKeyRef:
                 name: vllm-secrets
-                key: hf_token_llama3
+                key: hf_token_mistral
           - name: LMCACHE_USE_EXPERIMENTAL
-            value: "True"
-          - name: LMCACHE_USE_LAYERWISE
             value: "True"
           - name: VLLM_RPC_TIMEOUT
             value: "1000000"
           - name: LMCACHE_LOCAL_CPU
             value: "True"
           - name: LMCACHE_MAX_LOCAL_CPU_SIZE
-            value: "60"
+            value: "30"
           ports:
             - name: "container-port"
               containerPort: 8000
@@ -277,7 +289,7 @@ spec:
             periodSeconds: 10
           resources:
             requests:
-              memory: "70Gi"
+              memory: "64Gi"
               cpu: "10"
               nvidia.com/gpu: "1"
             limits:
@@ -285,7 +297,20 @@ spec:
           volumeMounts:
           - name: vllm-storage
             mountPath: /data
+          - mountPath: /dev/fuse
+            name: dev-fuse
+            readOnly: true
+          - mountPath: /cache
+            name: cache-dir
+            readOnly: false
       volumes:
         - name: vllm-storage
           persistentVolumeClaim:
-            claimName: "vllm-llama3-storage-claim"
+            claimName: "vllm-mistral-storage-claim"
+        - hostPath:
+            path: /dev/fuse
+            type: CharDevice
+          name: dev-fuse
+        - hostPath:
+            path: /var/cache/vllm
+          name: cache-dir

@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 # Allow users to override the paths for the NVIDIA tools.
 : "${NVIDIA_SMI_PATH:=nvidia-smi}"
 : "${NVIDIA_CTK_PATH:=nvidia-ctk}"

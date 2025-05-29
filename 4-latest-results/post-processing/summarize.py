@@ -7,6 +7,7 @@ import contextlib
 from datetime import datetime
 import numpy as np
 import yaml
+import json
 
 def ProcessSummary(
     df: pd.DataFrame,
@@ -14,144 +15,183 @@ def ProcessSummary(
     end_time: Optional[float] = None,
     pending_queries: int = 0,
     qps: Optional[float] = None,
-) -> str:
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        # Check if the DataFrame is empty
-        if df.empty:
-            print("============ Serving Benchmark Result ============")
-            print("ERROR: No successful requests completed.")
-            print("All sessions failed, likely due to context length errors.")
-            print("Please check the logs for details and consider reducing")
-            print("the context length of your input prompts.")
-            print("==================================================")
-            return buf.getvalue()
+) -> dict:
+    """Process benchmark results and return as a dictionary."""
+    # Check if the DataFrame is empty
+    if df.empty:
+        return {
+            "error": "No successful requests completed",
+            "message": "All sessions failed, likely due to context length errors"
+        }
 
+    try:
+        if start_time is not None and end_time is not None:
+            launched_queries = len(df.query(f"{start_time} <= launch_time <= {end_time}"))
+            df = df.query(f"{start_time} <= finish_time <= {end_time}")
+        else:
+            launched_queries = len(df)
+
+        if qps is None:
+            qps = 0.0
+
+        if start_time is None:
+            start_time = df["launch_time"].min()
+        if end_time is None:
+            end_time = df["finish_time"].max()
+
+        total_time = end_time - start_time
+        total_requests = launched_queries + pending_queries
+        finished_requests = len(df)
+        request_throughput = finished_requests / total_time
+
+        total_prompt_tokens = df["prompt_tokens"].sum()
+        total_generation_tokens = df["generation_tokens"].sum()
+        output_token_throughput = total_generation_tokens / total_time
+        total_token_throughput = (total_prompt_tokens + total_generation_tokens) / total_time
+
+        # TTFT stats (in milliseconds)
+        ttft_ms = df["ttft"] * 1000
+        mean_ttft = ttft_ms.mean()
+        median_ttft = ttft_ms.median()
+        p99_ttft = np.percentile(ttft_ms, 99)
+
+        # Time per Output Token calculation (excluding first token)
+        df['tpot'] = ((df['generation_time'] - df['ttft']) / (df['generation_tokens'] - 1)) * 1000
+        tpot = df['tpot'].replace([float('inf'), -float('inf'), np.nan], np.nan).dropna()
+        mean_tpot = tpot.mean()
+        median_tpot = tpot.median()
+        p99_tpot = np.percentile(tpot, 99)
+
+        # Inter-token Latency
+        df['itl'] = (df['generation_time'] / df['generation_tokens']) * 1000
+        itl = df['itl'].replace([float('inf'), -float('inf'), np.nan], np.nan).dropna()
+        mean_itl = itl.mean()
+        median_itl = itl.median()
+        p99_itl = np.percentile(itl, 99)
+
+        return {
+            "successful_requests": int(finished_requests),
+            "benchmark_duration_s": round(total_time, 2),
+            "total_input_tokens": int(total_prompt_tokens),
+            "total_generated_tokens": int(total_generation_tokens),
+            "request_throughput_req_per_s": round(request_throughput, 2),
+            "output_token_throughput_tok_per_s": round(output_token_throughput, 2),
+            "total_token_throughput_tok_per_s": round(total_token_throughput, 2),
+            "ttft_ms": {
+                "mean": round(mean_ttft, 2),
+                "median": round(median_ttft, 2),
+                "p99": round(p99_ttft, 2)
+            },
+            "tpot_ms": {
+                "mean": round(mean_tpot, 2),
+                "median": round(median_tpot, 2),
+                "p99": round(p99_tpot, 2)
+            },
+            "itl_ms": {
+                "mean": round(mean_itl, 2),
+                "median": round(median_itl, 2),
+                "p99": round(p99_itl, 2)
+            }
+        }
+
+    except Exception as e:
+        return {
+            "error": f"Failed to process benchmark results: {str(e)}",
+            "message": "This is likely due to empty metrics after filtering failed sessions"
+        }
+
+def get_serving_baseline_info(serving_index: Optional[int] = None) -> dict:
+    """Extract serving baseline information from bench-spec.yaml."""
+    serving_info = {}
+
+    if os.path.exists("bench-spec.yaml"):
         try:
-            if start_time is not None and end_time is not None:
-                launched_queries = len(df.query(f"{start_time} <= launch_time <= {end_time}"))
-                df = df.query(f"{start_time} <= finish_time <= {end_time}")
-            else:
-                launched_queries = len(df)
+            with open("bench-spec.yaml", "r") as spec_file:
+                config = yaml.safe_load(spec_file)
 
-            if qps is None:
-                qps = 0.0
+            if serving_index is not None and 'Serving' in config:
+                serving_configs = config['Serving']
+                if isinstance(serving_configs, list) and 0 <= serving_index < len(serving_configs):
+                    serving_config = serving_configs[serving_index]
+                    baseline_type = list(serving_config.keys())[0]
+                    baseline_config = serving_config[baseline_type]
 
-            if start_time is None:
-                start_time = df["launch_time"].min()
-            if end_time is None:
-                end_time = df["finish_time"].max()
+                    # Remove sensitive information
+                    baseline_config_clean = {k: v for k, v in baseline_config.items() if k != 'hf_token'}
 
-            total_time = end_time - start_time
-            total_requests = launched_queries + pending_queries
-            finished_requests = len(df)
-            request_throughput = finished_requests / total_time
-
-            total_prompt_tokens = df["prompt_tokens"].sum()
-            total_generation_tokens = df["generation_tokens"].sum()
-            output_token_throughput = total_generation_tokens / total_time
-            total_token_throughput = (total_prompt_tokens + total_generation_tokens) / total_time
-
-            # TTFT stats (in milliseconds)
-            ttft_ms = df["ttft"] * 1000
-            mean_ttft = ttft_ms.mean()
-            median_ttft = ttft_ms.median()
-            p99_ttft = np.percentile(ttft_ms, 99)
-
-            # Time per Output Token calculation (excluding first token)
-            df['tpot'] = ((df['generation_time'] - df['ttft']) / (df['generation_tokens'] - 1)) * 1000
-            tpot = df['tpot'].replace([float('inf'), -float('inf'), np.nan], np.nan).dropna()
-            mean_tpot = tpot.mean()
-            median_tpot = tpot.median()
-            p99_tpot = np.percentile(tpot, 99)
-
-            # Inter-token Latency
-            df['itl'] = (df['generation_time'] / df['generation_tokens']) * 1000
-            itl = df['itl'].replace([float('inf'), -float('inf'), np.nan], np.nan).dropna()
-            mean_itl = itl.mean()
-            median_itl = itl.median()
-            p99_itl = np.percentile(itl, 99)
-
-            print("============ Serving Benchmark Result ============")
-            print(f"Successful requests:                     {finished_requests:<10}")
-            print(f"Benchmark duration (s):                  {total_time:.2f}      ")
-            print(f"Total input tokens:                      {total_prompt_tokens:<10}")
-            print(f"Total generated tokens:                  {total_generation_tokens:<10}")
-            print(f"Request throughput (req/s):              {request_throughput:.2f}      ")
-            print(f"Output token throughput (tok/s):         {output_token_throughput:.2f}    ")
-            print(f"Total Token throughput (tok/s):          {total_token_throughput:.2f}    ")
-            print("---------------Time to First Token----------------")
-            print(f"Mean TTFT (ms):                          {mean_ttft:.2f}     ")
-            print(f"Median TTFT (ms):                        {median_ttft:.2f}     ")
-            print(f"P99 TTFT (ms):                           {p99_ttft:.2f}     ")
-            print("-----Time per Output Token (excl. 1st token)------")
-            print(f"Mean TPOT (ms):                          {mean_tpot:.2f}     ")
-            print(f"Median TPOT (ms):                        {median_tpot:.2f}     ")
-            print(f"P99 TPOT (ms):                           {p99_tpot:.2f}     ")
-            print("---------------Inter-token Latency----------------")
-            print(f"Mean ITL (ms):                           {mean_itl:.2f}     ")
-            print(f"Median ITL (ms):                         {median_itl:.2f}     ")
-            print(f"P99 ITL (ms):                            {p99_itl:.2f}     ")
-            print("==================================================")
-
+                    serving_info = {
+                        "baseline_type": baseline_type,
+                        "config": baseline_config_clean
+                    }
         except Exception as e:
-            print("============ Serving Benchmark Result ============")
-            print(f"ERROR: Failed to process benchmark results: {str(e)}")
-            print("This is likely due to empty metrics after filtering failed sessions.")
-            print("Check the logs for details on context length errors.")
-            print("==================================================")
+            print(f"Warning: Could not parse serving baseline info: {e}")
 
-    return buf.getvalue()
+    return serving_info
 
 def process_output(filename: str, **kwargs):
     try:
         df = pd.read_csv(filename)
 
-        # Create results file path early so we can write error messages if needed
-        filename_without_parent_or_ext = os.path.splitext(os.path.basename(filename))[0]
+        # Extract parameters
+        name = kwargs.get('NAME', 'unknown')
+        baseline_key = kwargs.get('KEY', 'unknown')
+        workload = kwargs.get('WORKLOAD', 'unknown')
+        qps = kwargs.get('QPS', 'unknown')
+        serving_index = kwargs.get('SERVING_INDEX')
+
+        # Create timestamp
         timestamp = datetime.now().strftime("%Y%m%d-%H%M")
-        results_path = f"4-latest-results/{filename_without_parent_or_ext}-{timestamp}.results"
 
-        summary_str = ProcessSummary(df, pending_queries=0)
+        # Generate filename: {NAME}_{BASELINE/KEY}_WKLD_QPS_TIME.json
+        json_filename = f"{name}_{baseline_key}_{workload}_{qps}_{timestamp}.json"
+        json_path = f"4-latest-results/{json_filename}"
 
-        # Read bench-spec.yaml and filter out lines with hf_token
-        bench_spec_content = ""
+        # Process benchmark results
+        results = ProcessSummary(df, pending_queries=0)
+
+        # Read bench-spec.yaml for infrastructure and name info
+        infra_info = {}
+        bench_name = name
         if os.path.exists("bench-spec.yaml"):
-            with open("bench-spec.yaml", "r") as spec_file:
-                bench_spec_content = "".join(
-                    line for line in spec_file if "hf_token" not in line
-                )
-        else:
-            print("bench-spec.yaml not found in summarize.py")
+            try:
+                with open("bench-spec.yaml", "r") as spec_file:
+                    config = yaml.safe_load(spec_file)
+                    bench_name = config.get('Name', name)
+                    infra_info = config.get('Infrastructure', {})
+            except Exception as e:
+                print(f"Warning: Could not parse bench-spec.yaml: {e}")
 
-        with open(results_path, "w") as f:
-            # Write the timestamp
-            f.write(f"Timestamp: {timestamp}\n")
-            # Write the summary statistics
-            f.write(summary_str)
-            # Write the specific workload for this set of statistics
-            f.write("\n==================== Workload config ======================\n")
-            for k, v in kwargs.items():
-                f.write(f"{k}: {v}\n")
-            f.write("===========================================================\n")
-            # Write the bench-spec.yaml content
-            if bench_spec_content:
-                f.write("\n==================== bench-spec.yaml ======================\n")
-                f.write(bench_spec_content)
-                f.write("\n===========================================================\n")
+        # Get serving baseline info
+        serving_info = get_serving_baseline_info(serving_index)
 
-        print(f"Performance summary saved to {results_path}")
+        # Create workload info (exclude sensitive and internal parameters)
+        workload_info = {k: v for k, v in kwargs.items()
+                        if k not in ['NAME', 'KEY', 'SERVING_INDEX']}
 
-        # Save a copy of the results file to ~/srv/runner-db/
-        print(f"Saving results to ~/srv/runner-db/{filename_without_parent_or_ext}-{timestamp}.results")
+        # Create the final JSON structure
+        output_data = {
+            "name": bench_name,
+            "timestamp": timestamp,
+            "results": results,
+            "infra": infra_info,
+            "serving": serving_info,
+            "workload": workload_info
+        }
+
+        # Write JSON file
+        with open(json_path, "w") as f:
+            json.dump(output_data, f, indent=2)
+
+        print(f"Performance summary saved to {json_path}")
+
+        # Save a copy to ~/srv/runner-db/
         runner_db_path = os.path.expanduser("~/srv/runner-db/")
         os.makedirs(runner_db_path, exist_ok=True)
-        runner_db_file = os.path.join(runner_db_path, f"{filename_without_parent_or_ext}-{timestamp}.results")
+        runner_db_file = os.path.join(runner_db_path, json_filename)
 
-        # Copy the contents to the new location
-        with open(results_path, "r") as src, open(runner_db_file, "w") as dst:
+        with open(json_path, "r") as src, open(runner_db_file, "w") as dst:
             dst.write(src.read())
-        print(f"Results saved to ~/srv/runner-db/{filename_without_parent_or_ext}-{timestamp}.results")
+        print(f"Results saved to ~/srv/runner-db/{json_filename}")
 
     except Exception as e:
         print(f"ERROR: Failed to process benchmark results: {str(e)}")

@@ -37,7 +37,7 @@ spec:
   resources:
     requests:
       storage: 50Gi  # Default to 20Gi if not set
-  storageClassName: standard-rwo
+  storageClassName: standard
 ---
 # Source: vllm-stack/templates/role.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -217,7 +217,7 @@ spec:
               mountPath: /data
       containers:
         - name: "vllm"
-          image: "lmcache/vllm-openai:2025-05-17-v1"
+          image: "lmcache/vllm-openai:latest"
           command:
           - "/opt/venv/bin/vllm"
           - "serve"

@@ -520,6 +520,7 @@ def parse_arguments() -> WorkloadConfig:
     parser.add_argument(
         "--request-with-user-id",
         action="store_true",
+        default=True,
         help="Whether to enable user id in the request headers",
     )
     parser.add_argument(

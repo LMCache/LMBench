@@ -210,7 +210,7 @@ spec:
     spec:
       containers:
         - name: "vllm"
-          image: "lmcache/vllm-openai:2025-05-17-v1"
+          image: "lmcache/vllm-openai:latest"
           command:
           - "/opt/venv/bin/vllm"
           - "serve"
