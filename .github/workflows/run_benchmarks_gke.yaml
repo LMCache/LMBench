@@ -20,40 +20,37 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Check run-bench.yaml configuration
-        shell: bash
+      - name: Set up Conda environment
+        shell: bash -l {0}
         run: |
+          source ~/miniconda3/etc/profile.d/conda.sh
+          conda activate py312
+          python --version
+          echo "✅ Installing Python dependencies..."
+          pip install -r requirements.txt
+
+      - name: Check run-bench.yaml configuration
+        shell: bash -l {0}
+        run: |
+          source ~/miniconda3/etc/profile.d/conda.sh
+          conda activate py312
+
           if [ ! -f "run-bench.yaml" ]; then
             echo "::error:: run-bench.yaml not found in project root."
             exit 1
           fi
 
-          # Check if any of the spec files contain LMCacheGKE
-          found_lmcache_gke=false
-
-          # Extract spec files from run-bench.yaml and check each one
-          spec_files=$(python3 -c "
+          # Check if the infrastructure location is set to LMCacheGKE
+          location=$(python3 -c "
           import yaml
           with open('run-bench.yaml', 'r') as f:
               config = yaml.safe_load(f)
-              for spec_file in config.get('0-bench-specs', []):
-                  print(f'0-bench-specs/{spec_file}')
+              infrastructure = config.get('1-infrastructure', {})
+              print(infrastructure.get('Location', ''))
           ")
 
-          for spec_file in $spec_files; do
-            if [ -f "$spec_file" ]; then
-              if grep -q "Location: LMCacheGKE" "$spec_file"; then
-                found_lmcache_gke=true
-                echo "✅ Found LMCacheGKE configuration in $spec_file"
-                break
-              fi
-            else
-              echo "::warning:: Spec file $spec_file not found"
-            fi
-          done
-
-          if [ "$found_lmcache_gke" = false ]; then
-            echo "::warning:: Location: LMCacheGKE not found in any spec files. Skipping benchmark run."
+          if [ "$location" != "LMCacheGKE" ]; then
+            echo "::warning:: Infrastructure location is '$location', not 'LMCacheGKE'. Skipping benchmark run."
             exit 0
           fi
 
@@ -92,14 +89,13 @@ jobs:
           echo "✅ Listing compute instances..."
           gcloud compute instances list
 
-      - name: Set up Conda environment and run benchmark script
+      - name: Run benchmark script
         shell: bash -l {0}
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate py312
-          python --version
           echo "✅ Running benchmark script..."
           python run-bench.py
 
