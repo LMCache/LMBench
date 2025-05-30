@@ -32,15 +32,20 @@ jobs:
       - name: Check run-bench.yaml configuration
         shell: bash -l {0}
         run: |
+          set -e  # Exit immediately if any command fails
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate py312
 
+          echo "🔍 Checking for run-bench.yaml in $(pwd)..."
           if [ ! -f "run-bench.yaml" ]; then
             echo "::error:: run-bench.yaml not found in project root."
+            echo "❌ FAILING THE BUILD - run-bench.yaml is required!"
             exit 1
           fi
+          echo "✅ Found run-bench.yaml"
 
           # Check if the infrastructure location is set to LMCacheGKE
+          echo "🔍 Checking infrastructure location..."
           location=$(python3 -c "
           import yaml
           with open('run-bench.yaml', 'r') as f:
@@ -48,10 +53,12 @@ jobs:
               infrastructure = config.get('1-infrastructure', {})
               print(infrastructure.get('Location', ''))
           ")
+          echo "📍 Infrastructure location found: '$location'"
 
           if [ "$location" != "LMCacheGKE" ]; then
-            echo "::warning:: Infrastructure location is '$location', not 'LMCacheGKE'. Skipping benchmark run."
-            exit 0
+            echo "::error:: Infrastructure location is '$location', not 'LMCacheGKE'. Expected 'LMCacheGKE'."
+            echo "❌ FAILING THE BUILD - LMCacheGKE configuration required!"
+            exit 1
           fi
 
           echo "✅ run-bench.yaml correctly configured for LMCacheGKE."
