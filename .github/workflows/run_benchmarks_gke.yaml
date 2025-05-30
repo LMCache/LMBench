@@ -112,7 +112,7 @@ jobs:
           for dir in 4-latest-results/*/; do
             name=$(basename "$dir")
             if [ "$name" != "post-processing" ]; then
-              zip -r "compressed-artifacts/$name.zip" "$dir"
+              tar -czf "compressed-artifacts/$name.tar.gz" -C "4-latest-results" "$name"
             fi
           done
 

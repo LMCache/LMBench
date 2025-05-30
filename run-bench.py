@@ -1045,12 +1045,6 @@ def run_multiple_specs(run_bench_config: Dict[str, Any], args) -> None:
             # Continue with next spec
             continue
 
-        finally:
-            # Clean up after each spec (except the last one, which is handled in main)
-            if spec_index < len(spec_files) - 1:
-                print(f"Cleaning up after spec {spec_file}...")
-                clean_up()
-
 # High-Level Benchmarking Pipeline
 def main() -> None:
     args = parse_args()
@@ -1111,12 +1105,6 @@ def run_cartesian_product(config: Dict[str, Any]) -> None:
             print(f"Error with serving baseline {serving_index}: {str(e)}")
             # Continue with next serving baseline
             continue
-
-        finally:
-            # Clean up after each serving baseline (except the last one, which is handled in main)
-            if serving_index < len(serving_configs) - 1:
-                print(f"Cleaning up after serving baseline {serving_index}...")
-                clean_up()
 
 if __name__ == "__main__":
     main()
