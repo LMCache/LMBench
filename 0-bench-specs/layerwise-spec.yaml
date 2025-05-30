@@ -59,7 +59,7 @@ Workload:
       SYSTEM_PROMPT: 0
       CHAT_HISTORY: 8000
       ANSWER_LEN: 20
-      QPS: [0.5]
+      QPS: [0.5, 1, 1.5, 2]
       USE_SHAREGPT: false
 
   # Mooncake:
