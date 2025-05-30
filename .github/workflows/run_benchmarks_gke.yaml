@@ -106,11 +106,21 @@ jobs:
           echo "✅ Running benchmark script..."
           python run-bench.py
 
-      - name: Upload .results artifacts to GitHub
+      - name: Compress benchmark result directories
+        run: |
+          mkdir -p compressed-artifacts
+          for dir in 4-latest-results/*/; do
+            name=$(basename "$dir")
+            if [ "$name" != "post-processing" ]; then
+              zip -r "compressed-artifacts/$name.zip" "$dir"
+            fi
+          done
+
+      - name: Upload compressed benchmark results
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
-          path: 4-latest-results/*.results
+          path: compressed-artifacts/
 
   cleanup:
     runs-on: self-hosted
