@@ -22,6 +22,21 @@ if [ -z "$KUBE_CONFIG_FILENAME" ]; then
     exit 1
 fi
 
+# Clean up port 30080 early to avoid conflicts
+echo "Cleaning up any existing port forwarding on port 30080..."
+# Kill any kubectl port-forward processes specifically
+pkill -f "kubectl port-forward.*30080" 2>/dev/null || true
+# Also check for any other processes using port 30080
+PID_ON_30080=$(sudo lsof -t -i :30080 2>/dev/null)
+if [[ -n "$PID_ON_30080" ]]; then
+  echo "Found process on port 30080 (PID: $PID_ON_30080). Killing it..."
+  sudo kill -9 "$PID_ON_30080" || echo "  ❗️ Failed to kill PID $PID_ON_30080"
+else
+  echo "✅ Port 30080 is free."
+fi
+# Wait a moment for the port to be fully released
+sleep 2
+
 # Set the path to the kubernetes configurations directory
 KUBE_CONFIG_DIR="$SCRIPT_DIR/kubernetes_configurations"
 KUBE_CONFIG_FILE="$KUBE_CONFIG_DIR/$KUBE_CONFIG_FILENAME"
@@ -228,15 +243,6 @@ while true; do
 done
 
 echo "Ready for port forwarding!"
-
-echo "Checking for any process using port 30080..."
-PID_ON_30080=$(sudo lsof -t -i :30080 2>/dev/null)
-if [[ -n "$PID_ON_30080" ]]; then
-  echo "Found process on port 30080 (PID: $PID_ON_30080). Killing it..."
-  sudo kill -9 "$PID_ON_30080" || echo "  ❗️ Failed to kill PID $PID_ON_30080"
-else
-  echo "✅ Port 30080 is free."
-fi
 
 # Start port forwarding in the background
 kubectl port-forward svc/vllm-router-service 30080:80 &
