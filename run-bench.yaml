@@ -1,9 +1,10 @@
 # If you are running locally, make sure to set the HF_TOKEN environment variable
 0-bench-specs:
-  - single-debug/prefixaware-spec.yaml
+  # - single-debug/prefixaware-spec.yaml
+  - layerwise/layerwise-random-spec.yaml
 
 1-infrastructure:
-  # Location: LMCacheGKE
-  # numClusterGPUs: 1
-  # A100_VRAM: 40
-  Location: LocalMinikube
+  Location: LMCacheGKE
+  numClusterGPUs: 1
+  A100_VRAM: 40
+  # Location: LocalMinikube

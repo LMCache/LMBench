@@ -647,7 +647,7 @@ def run_workload(config: Dict[str, Any]) -> None:
 
     workload_cfg = config['Workload']
 
-    supported_workloads = ['ShareGPT', 'LMCacheSynthetic', 'Agentic', 'Mooncake']
+    supported_workloads = ['ShareGPT', 'LMCacheSynthetic', 'Agentic', 'Mooncake', 'Random']
     for workload in workload_cfg:
         if workload not in supported_workloads:
             raise ValueError(f"Unsupported workload type: {workload}")
@@ -684,6 +684,14 @@ def run_workload(config: Dict[str, Any]) -> None:
                 run_agentic(config)
         else:
             run_agentic(agentic_config)
+
+    if 'Random' in workload_cfg:
+        random_config = workload_cfg['Random']
+        if isinstance(random_config, list):
+            for config in random_config:
+                run_random(config)
+        else:
+            run_random(random_config)
 
 def run_sharegpt(sharegpt_config: Dict[str, Any]) -> None:
     """Run the ShareGPT workload with the specified configuration."""
@@ -933,6 +941,62 @@ def run_agentic(agentic_config: Dict[str, Any]) -> None:
         print("Agentic workloads completed successfully")
     else:
         raise RuntimeError("Failed to run Agentic workload")
+
+def run_random(random_config: Dict[str, Any]) -> None:
+    """Run the Random workload with the specified configuration."""
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH
+
+    # Read the benchmark name from the current spec config
+    benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
+
+    qps_values = random_config.get('QPS')
+    NUM_USERS = random_config.get('NUM_USERS')
+    NUM_ROUNDS = random_config.get('NUM_ROUNDS')
+    PROMPT_LEN = random_config.get('PROMPT_LEN')
+    ANSWER_LEN = random_config.get('ANSWER_LEN')
+
+    workload_exec_script_path = Path(__file__).parent / '3-workloads' / 'random' / 'run-random.sh'
+    if not workload_exec_script_path.exists():
+        raise FileNotFoundError(f"Random script not found at {workload_exec_script_path}")
+
+    os.chmod(workload_exec_script_path, 0o755)
+
+    cmd = [str(workload_exec_script_path)]
+    cmd.extend([str(MODEL_URL)])
+    cmd.extend(["http://localhost:30080/v1/"]) # the base URL when serving with production stack
+    cmd.extend([KEY]) # the key that will be embedded in the filenames of the results
+
+    """
+    Script signature:
+    MODEL=$1
+    BASE_URL=$2
+    KEY=$3
+    NUM_USERS=$4
+    NUM_ROUNDS=$5
+    PROMPT_LEN=$6
+    ANSWER_LEN=$7
+    NAME=$8
+    SERVING_INDEX=$9
+    SPEC_FILE_PATH=${10}
+    [qps_values...]
+    """
+    cmd.extend([str(NUM_USERS)])
+    cmd.extend([str(NUM_ROUNDS)])
+    cmd.extend([str(PROMPT_LEN)])
+    cmd.extend([str(ANSWER_LEN)])
+    cmd.extend([str(benchmark_name)])
+    cmd.extend([str(CURRENT_SERVING_INDEX)])
+    cmd.extend([str(CURRENT_SPEC_FILE_PATH)]) # Pass the spec file path
+    cmd.extend([str(qps) for qps in qps_values])
+
+    # Execute the workload
+    print(f"Running Random workload with parameters: {' '.join(cmd)}")
+    result = subprocess.run(cmd, check=True)
+
+    if result.returncode == 0:
+        print("Random workloads completed successfully")
+    else:
+        raise RuntimeError("Failed to run Random workload")
 
 def clean_up() -> None:
     """

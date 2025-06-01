@@ -124,4 +124,29 @@ Workload:
       ANSWER_LEN: 20
       NEW_USER_INTERVALS: [1]
 
+  Random:
+    # Random workload generates completely random prompts with no shared prefix
+    # This is ideal for testing store-heavy workloads in LMCache
+    - NUM_USERS: 100
+      NUM_ROUNDS: 10
+      PROMPT_LEN: 200  # Length of random prompts (in words)
+      ANSWER_LEN: 100  # Length of the answer (max tokens)
+      QPS: [1.0, 2.0]
+
+    # commonly used combinations:
+
+    # short random prompts:
+    - NUM_USERS: 50
+      NUM_ROUNDS: 15
+      PROMPT_LEN: 50
+      ANSWER_LEN: 50
+      QPS: [5.0]
+
+    # long random prompts:
+    - NUM_USERS: 200
+      NUM_ROUNDS: 20
+      PROMPT_LEN: 500
+      ANSWER_LEN: 200
+      QPS: [0.5]
+
 

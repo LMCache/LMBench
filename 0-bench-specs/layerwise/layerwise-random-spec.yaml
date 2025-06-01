@@ -1,0 +1,27 @@
+Name: layerwise-random-benchmark
+
+# Suggested Infrastructure (in run-bench.yaml)
+# 1-infrastructure:
+#   Location: LMCacheGKE
+#   numClusterGPUs: 1
+#   A100_VRAM: 40
+
+Serving:
+  - Direct-ProductionStack:
+      kubernetesConfigSelection: layerwise/w.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+  - Direct-ProductionStack:
+      kubernetesConfigSelection: layerwise/wo.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+
+
+Workload:
+  Random:
+    # long random prompts:
+    - NUM_USERS: 20
+      NUM_ROUNDS: 20
+      PROMPT_LEN: 500
+      ANSWER_LEN: 200
+      QPS: [0.5, 1.0, 1.5, 2.0]
