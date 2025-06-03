@@ -695,11 +695,18 @@ def run_workload(config: Dict[str, Any]) -> None:
 
 def run_sharegpt(sharegpt_config: Dict[str, Any]) -> None:
     """Run the ShareGPT workload with the specified configuration."""
-    if not GLOBAL_ARGS.ignore_data_generation:
-        sharegpt_data_generation(sharegpt_config)
+    sharegpt_data_generation(sharegpt_config)
     sharegpt_run_workload(sharegpt_config)
 
 def sharegpt_data_generation(sharegpt_config: Dict[str, Any]) -> None:
+    # Function level attribute to ensure we only generate data once
+    if not hasattr(sharegpt_data_generation, 'data_generated'):
+        sharegpt_data_generation.data_generated = False
+
+    if sharegpt_data_generation.data_generated:
+        print("ShareGPT data already generated, skipping...")
+        return
+
     # Get ShareGPT specific parameters with defaults
     limit = sharegpt_config.get('LIMIT')
     min_rounds = sharegpt_config.get('MIN_ROUNDS')
@@ -730,6 +737,7 @@ def sharegpt_data_generation(sharegpt_config: Dict[str, Any]) -> None:
 
     if result.returncode == 0:
         print("ShareGPT data generation completed successfully into 4-latest-results/sharegpt-data.json")
+        sharegpt_data_generation.data_generated = True
     else:
         raise RuntimeError("Failed to generate ShareGPT data")
 

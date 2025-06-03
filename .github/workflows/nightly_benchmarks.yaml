@@ -1,0 +1,7 @@
+name: Nightly Benchmarks
+
+on:
+  cron:
+    - 0 10 * * * # 5:00 AM CT
+
+jobs:

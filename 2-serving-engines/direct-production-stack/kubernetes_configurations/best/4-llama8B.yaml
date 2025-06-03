@@ -1,0 +1,315 @@
+---
+# Source: vllm-stack/templates/poddisruptionbudget.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: "vllm-pdb"
+  namespace: default
+spec:
+  maxUnavailable: 1
+---
+# Source: vllm-stack/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: "vllm-router-service-account"
+  namespace: default
+---
+# Source: vllm-stack/templates/secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: "vllm-secrets"
+  namespace: default
+type: Opaque
+data:
+  hf_token_llama3: "aGZfY0t1Y01ieXJKSVZObUtqUmJJRGVJdmFMYXVzVVp5YkhHdA=="
+---
+# Source: vllm-stack/templates/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: "vllm-llama3-storage-claim"
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 180Gi  # Default to 20Gi if not set
+  storageClassName: standard
+---
+# Source: vllm-stack/templates/role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: "vllm-pod-reader"
+  namespace: default
+rules:
+- apiGroups: [""] # "" indicates the core API group
+  resources: ["pods"]
+  verbs: ["get", "watch", "list"]
+---
+# Source: vllm-stack/templates/rolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vllm-deployment-access-binding
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: vllm-router-service-account
+    namespace: default
+roleRef:
+  kind: Role
+  name: vllm-pod-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+# Source: vllm-stack/templates/service-router.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: "vllm-router-service"
+  namespace: default
+  labels:
+    environment: router
+    release: router
+spec:
+  type: ClusterIP
+  ports:
+    - name: "router-sport"
+      port: 80
+      targetPort: 8000
+      protocol: TCP
+  selector:
+    environment: router
+    release: router
+---
+# Source: vllm-stack/templates/service-vllm.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: "vllm-llama3-engine-service"
+  namespace: default
+  labels:
+    environment: test
+    release: test
+spec:
+  type: ClusterIP
+  ports:
+    - name: "service-port"
+      port: 80
+      targetPort: "container-port"
+      protocol: TCP
+    - name: zmq-port
+      port: 55555
+      targetPort: zmq-port
+      protocol: TCP
+  selector:
+    model: "llama3"
+    helm-release-name: "vllm"
+---
+# Source: vllm-stack/templates/deployment-router.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "vllm-deployment-router"
+  namespace: default
+  labels:
+    environment: router
+    release: router
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 100%
+  selector:
+    matchLabels:
+      environment: router
+      release: router
+  template:
+    metadata:
+      labels:
+        environment: router
+        release: router
+    spec:
+      serviceAccountName: vllm-router-service-account
+      containers:
+      - name: router-container
+        image: "lmcache/lmstack-router:latest"
+        imagePullPolicy: "Always"
+        env:
+        args:
+          - "--host"
+          - "0.0.0.0"
+          - "--port"
+          - "8000"
+          - "--service-discovery"
+          - "k8s"
+          - "--k8s-namespace"
+          - "default"
+          - "--k8s-label-selector"
+          - environment=test,release=test
+          - "--routing-logic"
+          - "session"
+          - "--session-key"
+          - "x-user-id"
+          - "--engine-stats-interval"
+          - "15"
+          - "--request-stats-window"
+          - "60"
+        resources:
+          requests:
+            cpu: "2"
+            memory: "8Gi"
+          limits:
+            cpu: "2"
+            memory: "8Gi"
+        ports:
+          - name: "router-cport"
+            containerPort: 8000
+        livenessProbe:
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 8000
+---
+# Source: vllm-stack/templates/deployment-vllm-multi.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "vllm-llama3-deployment-vllm"
+  namespace: default
+  labels:
+    model: llama3
+    helm-release-name: vllm
+    environment: test
+    release: test
+spec:
+  replicas: 4
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 100%
+  selector:
+    matchLabels:
+      model: llama3
+      helm-release-name: vllm
+      environment: test
+      release: test
+  progressDeadlineSeconds: 1200
+  template:
+    metadata:
+      labels:
+        model: llama3
+        helm-release-name: vllm
+        environment: test
+        release: test
+    spec:
+      initContainers:
+        - name: my-container
+          image: busybox
+          command:
+            - sh
+          volumeMounts:
+            - name: vllm-storage
+              mountPath: /data
+      containers:
+        - name: "vllm"
+          image: "lmcache/vllm-openai:latest"
+          command:
+          - "/opt/venv/bin/vllm"
+          - "serve"
+          - "meta-llama/Llama-3.1-8B-Instruct"
+          - "--host"
+          - "0.0.0.0"
+          - "--port"
+          - "8000"
+          - "--no-enable-prefix-caching"
+          - "--max-model-len"
+          - "20000"
+          - "--dtype"
+          - "bfloat16"
+          - "--max-num-seqs"
+          - "32"
+          - "--gpu_memory_utilization"
+          - "0.95"
+          - "--max_loras"
+          - "4"
+          - "--disable-log-requests"
+          - "--trust-remote-code"
+          - "--kv-transfer-config"
+          - '{"kv_connector":"LMCacheConnectorV1","kv_role":"kv_both"}'
+          securityContext:
+            runAsNonRoot: false
+          imagePullPolicy: Always
+          env:
+          - name: HF_HOME
+            value: /data
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: LMCACHE_LOG_LEVEL
+            value: "DEBUG"
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: vllm-secrets
+                key: hf_token_llama3
+          - name: LMCACHE_USE_EXPERIMENTAL
+            value: "True"
+          - name: VLLM_RPC_TIMEOUT
+            value: "1000000"
+          - name: LMCACHE_LOCAL_CPU
+            value: "True"
+          - name: LMCACHE_MAX_LOCAL_CPU_SIZE
+            value: "30"
+          ports:
+            - name: "container-port"
+              containerPort: 8000
+            - name: zmq-port
+              containerPort: 55555
+          startupProbe:
+            failureThreshold: 60
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "64Gi"
+              cpu: "10"
+              nvidia.com/gpu: "1"
+            limits:
+              nvidia.com/gpu: "1"
+          volumeMounts:
+          - name: vllm-storage
+            mountPath: /data
+          - mountPath: /dev/fuse
+            name: dev-fuse
+            readOnly: true
+          - mountPath: /cache
+            name: cache-dir
+      volumes:
+        - name: vllm-storage
+          persistentVolumeClaim:
+            claimName: "vllm-llama3-storage-claim"
+        - hostPath:
+            path: /dev/fuse
+            type: CharDevice
+          name: dev-fuse
+        - hostPath:
+            path: /var/cache/vllm
+          name: cache-dir
