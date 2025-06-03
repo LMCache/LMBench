@@ -1,6 +1,17 @@
 name: Test Self-Hosted Runner
 
 on:
+  workflow_call:
+    inputs:
+      config_file:
+        description: 'Path to the config file to use for run-bench.yaml'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      HF_TOKEN:
+        description: 'Hugging Face token for model access'
+        required: true
   workflow_dispatch:
   push:
     branches:
@@ -19,6 +30,15 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+
+      - name: Copy config file if specified
+        if: ${{ inputs.config_file != '' }}
+        run: |
+          echo "📋 Copying config file: ${{ inputs.config_file }} to run-bench.yaml"
+          cp "${{ inputs.config_file }}" run-bench.yaml
+          echo "✅ Config file copied successfully"
+          echo "📄 Contents of run-bench.yaml:"
+          cat run-bench.yaml
 
       - name: Set up Conda environment
         shell: bash -l {0}
@@ -116,10 +136,20 @@ jobs:
             fi
           done
 
+      - name: Set artifact name
+        id: artifact-name
+        run: |
+          if [ -n "${{ inputs.config_file }}" ]; then
+            config_name=$(basename "${{ inputs.config_file }}" .yaml)
+            echo "name=benchmark-results-$config_name" >> $GITHUB_OUTPUT
+          else
+            echo "name=benchmark-results-default" >> $GITHUB_OUTPUT
+          fi
+
       - name: Upload compressed benchmark results
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-results
+          name: ${{ steps.artifact-name.outputs.name }}
           path: compressed-artifacts/
 
   cleanup:

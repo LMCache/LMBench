@@ -1,7 +1,8 @@
 0-bench-specs:
-  - daily/4-llama8B/prodstack.yaml
+  # - daily/4-llama8B/prodstack.yaml
 
 1-infrastructure:
-  Location: LMCacheGKE
-  numClusterGPUs: 4
-  A100_VRAM: 40
+  Location: NoBench
+  # Location: LMCacheGKE
+  # numClusterGPUs: 4
+  # A100_VRAM: 40

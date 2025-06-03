@@ -1,7 +1,49 @@
 name: Nightly Benchmarks
 
 on:
-  cron:
-    - 0 10 * * * # 5:00 AM CT
+  schedule:
+    - cron: '0 10 * * *' # 5:00 AM CT
+  workflow_dispatch: # Allow manual triggering
 
 jobs:
+  discover-configs:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Generate matrix
+        id: set-matrix
+        run: |
+          echo "🔍 Discovering config files in .github/workflows/nightly-run-bench/"
+
+          # Find all YAML config files and create matrix
+          configs=$(find .github/workflows/nightly-run-bench/ -name "*.yaml" -type f | jq -R -s -c 'split("\n")[:-1] | map(select(length > 0))')
+
+          if [ "$configs" = "[]" ]; then
+            echo "❌ No config files found"
+            echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+          else
+            echo "📋 Found config files: $configs"
+            # Create matrix with config file paths
+            matrix=$(echo "$configs" | jq -c '{include: [.[] | {config_file: .}]}')
+            echo "matrix=$matrix" >> $GITHUB_OUTPUT
+          fi
+
+  run-benchmark:
+    needs: discover-configs
+    if: ${{ needs.discover-configs.outputs.matrix != '{"include":[]}' }}
+    strategy:
+      matrix: ${{ fromJson(needs.discover-configs.outputs.matrix) }}
+      fail-fast: false
+    uses: ./.github/workflows/run_benchmarks_gke.yaml
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
+    secrets:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    with:
+      config_file: ${{ matrix.config_file }}
