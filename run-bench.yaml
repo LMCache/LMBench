@@ -1,10 +1,10 @@
 0-bench-specs:
-  - routing/4-spec.yaml
+  - routing/8-spec.yaml
   # - daily/4-llama8B/prodstack.yaml
 
 1-infrastructure:
   # Location: LocalMinikube
   # # Location: NoBench
   Location: LMCacheGKE
-  numClusterGPUs: 4
+  numClusterGPUs: 8
   A100_VRAM: 40

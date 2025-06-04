@@ -1,0 +1,48 @@
+Name: routing-benchmark
+
+# Suggested Infrastructure (in run-bench.yaml)
+# 1-infrastructure:
+#   Location: LMCacheGKE
+#   numClusterGPUs: 4
+#   A100_VRAM: 40
+
+Serving:
+  - Direct-ProductionStack:
+      kubernetesConfigSelection: routing/lmcache_roundrobin.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: mistralai/Mistral-7B-Instruct-v0.2
+  - Direct-ProductionStack:
+      kubernetesConfigSelection: routing/lmcache_session.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: mistralai/Mistral-7B-Instruct-v0.2
+  - Direct-ProductionStack:
+      kubernetesConfigSelection: routing/lmcache_kvaware.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: mistralai/Mistral-7B-Instruct-v0.2
+  - Direct-ProductionStack:
+      kubernetesConfigSelection: routing/lmcache_prefixaware.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: mistralai/Mistral-7B-Instruct-v0.2
+
+Workload:
+
+  LMCacheSynthetic:
+  #   # long input long output:
+  #   - NUM_USERS_WARMUP: 750
+  #     NUM_USERS: 350
+  #     NUM_ROUNDS: 20
+  #     SYSTEM_PROMPT: 0
+  #     CHAT_HISTORY: 20000
+  #     ANSWER_LEN: 1000
+  #     QPS: [0.7]
+  #     USE_SHAREGPT: true
+
+    # long input short output:
+    - NUM_USERS_WARMUP: 20
+      NUM_USERS: 320
+      NUM_ROUNDS: 10
+      SYSTEM_PROMPT: 1000
+      CHAT_HISTORY: 20000
+      ANSWER_LEN: 100
+      QPS: [4, 5, 6, 7, 8, 9, 10, 11, 12]
+      USE_SHAREGPT: false

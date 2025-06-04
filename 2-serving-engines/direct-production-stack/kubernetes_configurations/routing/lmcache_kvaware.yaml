@@ -187,7 +187,7 @@ metadata:
     environment: test
     release: test
 spec:
-  replicas: 4
+  replicas: 8
   strategy:
     rollingUpdate:
       maxSurge: 0
