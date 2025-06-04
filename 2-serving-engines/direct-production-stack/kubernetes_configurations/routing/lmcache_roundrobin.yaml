@@ -265,7 +265,7 @@ spec:
           - name: LMCACHE_LOCAL_CPU
             value: "True"
           - name: LMCACHE_MAX_LOCAL_CPU_SIZE
-            value: "75"
+            value: "50"
           ports:
             - name: "container-port"
               containerPort: 8000
