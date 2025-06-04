@@ -75,14 +75,16 @@ def create_workload_comparison(workload_name, workload_results, suite_name):
         baseline_key = extract_key_from_filename(filename)
         qps = data.get('workload', {}).get('QPS', 0)
 
-        # Extract TTFT and ITL means
+        # Extract TTFT, ITL, and TPOT means
         results = data.get('results', {})
         ttft_mean = results.get('ttft_ms', {}).get('mean', 0)
         itl_mean = results.get('itl_ms', {}).get('mean', 0)
+        tpot_mean = results.get('tpot_ms', {}).get('mean', 0)
 
         qps_data[qps][baseline_key] = {
             "TTFT": round(ttft_mean, 2),
-            "ITL": round(itl_mean, 2)
+            "ITL": round(itl_mean, 2),
+            "TPOT": round(tpot_mean, 2)
         }
 
     # Convert to list format sorted by QPS
@@ -126,8 +128,8 @@ def create_workload_plot(comparison_data, workload_name, suite_name):
     # Prepare data for plotting
     qps_values = [entry['qps'] for entry in comparison_data]
 
-    # Set up the plot
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    # Set up the plot with 3 subplots
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 6))
 
     # Define colors and markers
     colors = plt.cm.tab10(np.linspace(0, 1, len(baseline_keys)))
@@ -175,6 +177,28 @@ def create_workload_plot(comparison_data, workload_name, suite_name):
     ax2.set_title(f'{workload_name.title()} - Inter-token Latency')
     ax2.legend()
     ax2.grid(True, alpha=0.3)
+
+    # Plot TPOT
+    for i, baseline_key in enumerate(baseline_keys):
+        tpot_values = []
+        for entry in comparison_data:
+            if baseline_key in entry:
+                tpot_values.append(entry[baseline_key]['TPOT'])
+            else:
+                tpot_values.append(None)
+
+        # Filter out None values
+        valid_qps = [qps for qps, tpot in zip(qps_values, tpot_values) if tpot is not None]
+        valid_tpot = [tpot for tpot in tpot_values if tpot is not None]
+
+        if valid_tpot:
+            ax3.plot(valid_qps, valid_tpot, '^-', color=colors[i], label=baseline_key, markersize=8)
+
+    ax3.set_xlabel('QPS')
+    ax3.set_ylabel('TPOT (ms)')
+    ax3.set_title(f'{workload_name.title()} - Time Per Output Token')
+    ax3.legend()
+    ax3.grid(True, alpha=0.3)
 
     plt.tight_layout()
 
