@@ -1,5 +1,5 @@
 0-bench-specs:
-  - daily/4-llama8B/prodstack.yaml
+  - daily/4-A100.yaml
 
 1-infrastructure:
   Location: LMCacheGKE

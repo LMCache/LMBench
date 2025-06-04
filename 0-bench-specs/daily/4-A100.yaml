@@ -11,6 +11,7 @@ Serving:
       kubernetesConfigSelection: best/4-llama8B.yaml
       hf_token: <YOUR_HF_TOKEN>
       modelURL: meta-llama/Llama-3.1-8B-Instruct
+  # Add other baselines here
 
 Workload:
 

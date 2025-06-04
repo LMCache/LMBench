@@ -189,7 +189,7 @@ metadata:
     environment: test
     release: test
 spec:
-  replicas: 1
+  replicas: 4
   strategy:
     rollingUpdate:
       maxSurge: 0
@@ -267,7 +267,7 @@ spec:
           - name: LMCACHE_LOCAL_CPU
             value: "True"
           - name: LMCACHE_MAX_LOCAL_CPU_SIZE
-            value: "30"
+            value: "75"
           ports:
             - name: "container-port"
               containerPort: 8000
