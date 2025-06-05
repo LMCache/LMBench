@@ -1,0 +1,28 @@
+Name: basic-helm-benchmark
+
+# Suggested Infrastructure (in run-bench.yaml)
+# 1-infrastructure:
+#   Location: LMCacheGKE
+#   numClusterGPUs: 1
+#   A100_VRAM: 40
+#   OR
+#   Location: LocalMinikube
+
+Serving:
+  - Helm-ProductionStack:
+      helmConfigSelection: basic/llama-3.1-8b-basic.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+
+
+Workload:
+  LMCacheSynthetic:
+    # short input short output:
+    - NUM_USERS_WARMUP: 0
+      NUM_USERS: 10
+      NUM_ROUNDS: 2
+      SYSTEM_PROMPT: 0
+      CHAT_HISTORY: 8000
+      ANSWER_LEN: 20
+      QPS: [0.5]
+      USE_SHAREGPT: false

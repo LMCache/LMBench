@@ -83,9 +83,22 @@ class RequestExecutor:
         first_token: Optional[float] = None
         body = ""
 
+        # Convert chat messages to a single prompt string
+        prompt = ""
+        for msg in messages:
+            role = msg["role"]
+            content = msg["content"]
+            if role == "system":
+                prompt += f"System: {content}\n"
+            elif role == "user":
+                prompt += f"User: {content}\n"
+            elif role == "assistant":
+                prompt += f"Assistant: {content}\n"
+        prompt += "Assistant: "
+
         try:
-            stream = await self.client.chat.completions.create(
-                messages=messages,
+            stream = await self.client.completions.create(
+                prompt=prompt,
                 model=self.model,
                 temperature=0,
                 stream=True,
@@ -97,7 +110,7 @@ class RequestExecutor:
             async for chunk in stream:
                 if not chunk.choices:
                     continue
-                delta = chunk.choices[0].delta.content
+                delta = chunk.choices[0].text
                 if delta:
                     if first_token is None:
                         first_token = time.time()

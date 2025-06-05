@@ -1,24 +1,24 @@
-#! /bin/bash
+#!/bin/bash
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-# This script will choose the correct kubernetes config file and apply it to the cluster
+# This script will choose the correct helm config file and deploy it to the cluster
 
 # Parse arguments
 SKIP_NODE_AFFINITY=false
-KUBE_CONFIG_FILENAME=""
+HELM_CONFIG_FILENAME=""
 
 for arg in "$@"; do
   if [[ "$arg" == "--skip-node-affinity" ]]; then
     SKIP_NODE_AFFINITY=true
   elif [[ "$arg" != --* ]]; then
-    KUBE_CONFIG_FILENAME="$arg"
+    HELM_CONFIG_FILENAME="$arg"
   fi
 done
 
-if [ -z "$KUBE_CONFIG_FILENAME" ]; then
-    echo "Error: Kubernetes configuration filename not provided."
-    echo "Usage: $0 <kubernetes_config_filename> [--skip-node-affinity]"
+if [ -z "$HELM_CONFIG_FILENAME" ]; then
+    echo "Error: Helm configuration filename not provided."
+    echo "Usage: $0 <helm_config_filename> [--skip-node-affinity]"
     exit 1
 fi
 
@@ -37,17 +37,32 @@ fi
 # Wait a moment for the port to be fully released
 sleep 2
 
-# Set the path to the kubernetes configurations directory
-KUBE_CONFIG_DIR="$SCRIPT_DIR/kubernetes_configurations"
-KUBE_CONFIG_FILE="$KUBE_CONFIG_DIR/$KUBE_CONFIG_FILENAME"
+# Set the path to the helm configurations directory
+HELM_CONFIG_DIR="$SCRIPT_DIR/helm_configurations"
+HELM_CONFIG_FILE="$HELM_CONFIG_DIR/$HELM_CONFIG_FILENAME"
 
 # Check if the file exists
-if [ ! -f "$KUBE_CONFIG_FILE" ]; then
-    echo "Error: Kubernetes configuration file not found: $KUBE_CONFIG_FILE"
+if [ ! -f "$HELM_CONFIG_FILE" ]; then
+    echo "Error: Helm configuration file not found: $HELM_CONFIG_FILE"
     echo "Available configurations:"
-    ls -la "$KUBE_CONFIG_DIR" || echo "No configurations directory found at $KUBE_CONFIG_DIR"
+    ls -la "$HELM_CONFIG_DIR" || echo "No configurations directory found at $HELM_CONFIG_DIR"
     exit 1
 fi
+
+# Add Helm repo if not already added
+echo "Adding vLLM Helm repository..."
+helm repo add vllm https://vllm-project.github.io/production-stack || true
+helm repo update
+
+# Kill any process using port 30080
+if lsof -ti :30080 > /dev/null; then
+  echo "⚠️  Port 30080 is already in use. Killing existing process..."
+  kill -9 $(lsof -ti :30080)
+fi
+
+# Make sure there is no current release
+echo "Uninstalling any existing helm releases..."
+helm uninstall vllm || true
 
 # Clean up any existing deployments to avoid conflicts
 echo "Cleaning up kubectl resources..."
@@ -61,7 +76,6 @@ kubectl delete ingress --all
 kubectl delete networkpolicy --all
 kubectl delete role --all
 kubectl delete rolebinding --all
-
 
 # Wait for all resources to be fully deleted
 echo "Waiting for all resources to be fully deleted..."
@@ -78,26 +92,50 @@ while true; do
   sleep 3
 done
 
-# Process the kubernetes config file to substitute HF_TOKEN
-echo "Processing Kubernetes configuration: $KUBE_CONFIG_FILE"
-PROCESSED_CONFIG_FILE="/tmp/processed-k8s-config.yaml"
+# Process the helm config file to substitute HF_TOKEN
+echo "Processing Helm configuration: $HELM_CONFIG_FILE"
+PROCESSED_CONFIG_FILE="/tmp/processed-helm-config.yaml"
 
-# Check if HF_TOKEN is set
+# Substitute <YOUR_HF_TOKEN> with actual HF_TOKEN
 if [ -z "$HF_TOKEN" ]; then
     echo "Error: HF_TOKEN environment variable is not set"
+    echo "Please set your Hugging Face token: export HF_TOKEN=your_token_here"
     exit 1
 fi
 
-# Substitute <YOUR_HF_TOKEN> with actual HF_TOKEN and encode it as base64
-HF_TOKEN_BASE64=$(echo -n "$HF_TOKEN" | base64 -w 0)
+sed "s/<YOUR_HF_TOKEN>/$HF_TOKEN/g" "$HELM_CONFIG_FILE" > "$PROCESSED_CONFIG_FILE"
 
-# Substitute both the placeholder and the base64 encoded version
-sed -e "s/<YOUR_HF_TOKEN>/$HF_TOKEN/g" \
-    -e "s/<YOUR_HF_TOKEN_BASE64>/$HF_TOKEN_BASE64/g" \
-    "$KUBE_CONFIG_FILE" > "$PROCESSED_CONFIG_FILE"
+# Install the stack
+echo "Installing vLLM stack..."
+# release name is vllm
+helm install vllm vllm/vllm-stack -f "$PROCESSED_CONFIG_FILE"
 
-echo "Applying Kubernetes configuration: $PROCESSED_CONFIG_FILE"
-kubectl apply -f "$PROCESSED_CONFIG_FILE"
+# IMMEDIATE AUTOMATED FIX FOR VLLM ENTRYPOINT ISSUE
+echo "🔧 Applying immediate vLLM entrypoint fixes for lmcache/vllm-openai images..."
+sleep 3  # Give helm a moment to create resources
+
+# Retry loop to ensure we catch the deployments
+for i in {1..10}; do
+  VLLM_DEPLOYMENTS=$(kubectl get deployments 2>/dev/null | grep "deployment-vllm" | grep -v "router" | awk '{print $1}' || true)
+  if [ -n "$VLLM_DEPLOYMENTS" ]; then
+    echo "🔧 Found vLLM deployments, checking for lmcache/vllm-openai images..."
+    echo "$VLLM_DEPLOYMENTS" | while read deploy; do
+      IMAGE=$(kubectl get deployment $deploy -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+      if [[ $IMAGE == *"lmcache/vllm-openai"* ]]; then
+        echo "🔧 FIXING: $deploy uses $IMAGE - applying entrypoint fix..."
+        kubectl patch deployment $deploy --type='json' \
+          -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/command/0", "value": "/opt/venv/bin/vllm"}]' 2>/dev/null || true
+        echo "✅ FIXED: $deploy patched to use /opt/venv/bin/vllm"
+      else
+        echo "ℹ️  $deploy uses $IMAGE - no fix needed"
+      fi
+    done
+    break
+  else
+    echo "⏳ Waiting for deployments to be created... (attempt $i/10)"
+    sleep 2
+  fi
+done
 
 # Skip node affinity assignments if requested
 if [ "$SKIP_NODE_AFFINITY" = true ]; then
@@ -148,8 +186,8 @@ else
 
   # Determine which pool to use for router based on resource requirements
   echo "Analyzing node pools for router deployment..."
-  ROUTER_CPU_REQUEST=$(grep -A10 "resources:" "$KUBE_CONFIG_FILE" | grep -A2 "requests:" | grep "cpu:" | head -1 | awk '{print $2}' | tr -d '"')
-  ROUTER_MEMORY_REQUEST=$(grep -A10 "resources:" "$KUBE_CONFIG_FILE" | grep -A2 "requests:" | grep "memory:" | head -1 | awk '{print $2}' | tr -d '"')
+  ROUTER_CPU_REQUEST=$(grep -A10 "resources:" "$PROCESSED_CONFIG_FILE" | grep -A2 "requests:" | grep "cpu:" | head -1 | awk '{print $2}' | tr -d '"')
+  ROUTER_MEMORY_REQUEST=$(grep -A10 "resources:" "$PROCESSED_CONFIG_FILE" | grep -A2 "requests:" | grep "memory:" | head -1 | awk '{print $2}' | tr -d '"')
 
   echo "Router requires CPU: $ROUTER_CPU_REQUEST, Memory: $ROUTER_MEMORY_REQUEST"
 
@@ -212,6 +250,7 @@ else
       done
       echo "✅ Patched deployment strategy to reduce max surge"
   fi
+
 fi
 
 # Wait until all pods are ready
@@ -235,26 +274,69 @@ while true; do
   TOTAL=$(echo "$PODS" | tail -n +2 | wc -l)
   READY=$(echo "$PODS" | grep '1/1' | wc -l)
 
-  # # Check for pods in error state
-  # if echo "$PODS" | grep -E 'CrashLoopBackOff|Error|ImagePullBackOff' > /dev/null; then
-  #   echo "❌ Detected pod in CrashLoopBackOff / Error / ImagePullBackOff state!"
-  #   kubectl get pods
-  #   kubectl describe pods | grep -A 10 "Events:"
-  #   kubectl delete all --all
-  #   exit 1
-  # fi
+  # Check for pods in CrashLoopBackOff state and fix vLLM entrypoint issues
+  CRASHLOOP_PODS=$(echo "$PODS" | grep 'CrashLoopBackOff' | awk '{print $1}')
+  if [ -n "$CRASHLOOP_PODS" ]; then
+    echo "🔧 Detected pods in CrashLoopBackOff state, checking for vLLM entrypoint issues..."
+    echo "$CRASHLOOP_PODS" | while read pod; do
+      # Check if this is a vLLM pod and if it has the entrypoint issue
+      if [[ $pod == *"deployment-vllm"* ]] && [[ $pod != *"router"* ]]; then
+        LOGS=$(kubectl logs $pod --tail=10 2>/dev/null || true)
+        if echo "$LOGS" | grep -q 'exec: "vllm": executable file not found'; then
+          echo "🔧 Found vLLM entrypoint issue in pod $pod, applying fix..."
 
-  # # Check for CUDA OOM
-  # kubectl get pods -o name | grep -E 'vllm|lmcache' | while read pod; do
-  #   echo "Checking logs for $pod for CUDA OOM"
-  #   if kubectl logs $pod --tail=50 2>/dev/null | grep "CUDA out of memory" >/dev/null; then
-  #     echo "❗ CUDA OOM detected in $pod"
-  #     kubectl get pods
-  #     kubectl describe pod $pod
-  #     kubectl delete all --all
-  #     exit 1
-  #   fi
-  # done
+          # Get the deployment name from the pod
+          DEPLOYMENT=$(kubectl get pod $pod -o jsonpath='{.metadata.ownerReferences[0].name}' 2>/dev/null)
+          if [ -n "$DEPLOYMENT" ]; then
+            DEPLOYMENT_NAME=$(kubectl get replicaset $DEPLOYMENT -o jsonpath='{.metadata.ownerReferences[0].name}' 2>/dev/null)
+            if [ -n "$DEPLOYMENT_NAME" ]; then
+              echo "🔧 Patching deployment $DEPLOYMENT_NAME to use correct vLLM entrypoint..."
+              kubectl patch deployment $DEPLOYMENT_NAME --type='json' \
+                -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/command/0", "value": "/opt/venv/bin/vllm"}]' 2>/dev/null
+
+              # Delete the failing pod to trigger recreation with correct command
+              echo "🔧 Deleting failing pod $pod to trigger recreation..."
+              kubectl delete pod $pod 2>/dev/null
+
+              # Delete old replicaset to prevent creating more failing pods
+              echo "🔧 Cleaning up old replicaset $DEPLOYMENT..."
+              kubectl delete replicaset $DEPLOYMENT 2>/dev/null || true
+
+              echo "✅ Applied vLLM entrypoint fix for $DEPLOYMENT_NAME"
+            fi
+          fi
+        fi
+      fi
+    done
+  fi
+
+  # ALSO check for any failing vLLM pods and apply fixes aggressively
+  FAILING_PODS=$(echo "$PODS" | grep -E 'Error|ContainerCannotRun|CrashLoopBackOff|ImagePullBackOff' | awk '{print $1}')
+  if [ -n "$FAILING_PODS" ]; then
+    echo "$FAILING_PODS" | while read pod; do
+      if [[ $pod == *"deployment-vllm"* ]] && [[ $pod != *"router"* ]]; then
+        # Check if it's the vllm entrypoint issue
+        DESCRIBE_OUTPUT=$(kubectl describe pod $pod 2>/dev/null || true)
+        if echo "$DESCRIBE_OUTPUT" | grep -q 'exec: "vllm": executable file not found'; then
+          echo "🔧 AGGRESSIVE FIX: Found vLLM entrypoint issue in failing pod $pod"
+
+          # Get deployment name and fix it
+          DEPLOYMENT=$(kubectl get pod $pod -o jsonpath='{.metadata.ownerReferences[0].name}' 2>/dev/null || true)
+          if [ -n "$DEPLOYMENT" ]; then
+            DEPLOYMENT_NAME=$(kubectl get replicaset $DEPLOYMENT -o jsonpath='{.metadata.ownerReferences[0].name}' 2>/dev/null || true)
+            if [ -n "$DEPLOYMENT_NAME" ]; then
+              echo "🔧 AGGRESSIVE FIX: Patching $DEPLOYMENT_NAME..."
+              kubectl patch deployment $DEPLOYMENT_NAME --type='json' \
+                -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/command/0", "value": "/opt/venv/bin/vllm"}]' 2>/dev/null || true
+              kubectl delete pod $pod 2>/dev/null || true
+              kubectl delete replicaset $DEPLOYMENT 2>/dev/null || true
+              echo "✅ AGGRESSIVE FIX: Applied to $DEPLOYMENT_NAME"
+            fi
+          fi
+        fi
+      fi
+    done
+  fi
 
   if [ "$READY" -eq "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
     echo "✅ All $TOTAL pods are running and ready."
@@ -275,4 +357,3 @@ echo "Port forwarding started on 30080"
 
 # Clean up temporary file
 rm -f "$PROCESSED_CONFIG_FILE"
-

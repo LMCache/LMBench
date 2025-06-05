@@ -137,9 +137,23 @@ class RequestExecutor:
         start_time = time.time()
         first_token_time = None
         words = ""
+
+        # Convert chat messages to a single prompt string
+        prompt = ""
+        for msg in messages:
+            role = msg["role"]
+            content = msg["content"]
+            if role == "system":
+                prompt += f"System: {content}\n"
+            elif role == "user":
+                prompt += f"User: {content}\n"
+            elif role == "assistant":
+                prompt += f"Assistant: {content}\n"
+        prompt += "Assistant: "
+
         try:
-            response = await self.client.chat.completions.create(
-                messages=messages,
+            response = await self.client.completions.create(
+                prompt=prompt,
                 model=self.model,
                 temperature=0,
                 stream=True,
@@ -150,7 +164,7 @@ class RequestExecutor:
             async for tok in response:
                 if not tok.choices:
                     continue
-                chunk_message = tok.choices[0].delta.content
+                chunk_message = tok.choices[0].text
                 if chunk_message is not None:
                     if first_token_time is None and chunk_message != "":
                         first_token_time = time.time()

@@ -125,9 +125,15 @@ def validate_single_spec_config(config: Dict[str, Any], file_path: str) -> Dict[
             if not hf_token:
                 raise ValueError(f"hf_token must be specified for SGLang baseline {i} in {file_path}")
         elif baseline_type == 'Helm-ProductionStack':
+            helm_config = baseline_config.get('helmConfigSelection', '')
             hf_token = baseline_config.get('hf_token')
+            model_url = baseline_config.get('modelURL')
+            if not helm_config:
+                raise ValueError(f"helmConfigSelection must be specified for Helm-ProductionStack baseline {i} in {file_path}")
             if not hf_token:
                 raise ValueError(f"hf_token must be specified for Helm-ProductionStack baseline {i} in {file_path}")
+            if not model_url:
+                raise ValueError(f"modelURL must be specified for Helm-ProductionStack baseline {i} in {file_path}")
         elif baseline_type == 'Direct-ProductionStack':
             model_url = baseline_config.get('modelURL')
             hf_token = baseline_config.get('hf_token')
@@ -277,12 +283,9 @@ def generate_baseline_key(serving_config: Dict[str, Any]) -> str:
     if baseline_type == 'SGLang':
         return 'sglang'
     elif baseline_type == 'Helm-ProductionStack':
-        # helm_{lmcache, vllm} depending on useLMCache
-        use_lmcache = baseline_config.get('useLMCache', False)
-        if use_lmcache:
-            return 'helm_lmcache'
-        else:
-            return 'helm_vllm'
+        # helm_{config_name} based on helmConfigSelection
+        helm_config = baseline_config.get('helmConfigSelection', '')
+        return f"helm_{helm_config.replace('/', '_').replace('.yaml', '')}"
     elif baseline_type == 'Direct-ProductionStack':
         # Convert kubernetesConfigSelection filepath where "/" becomes "_"
         k8s_config = baseline_config.get('kubernetesConfigSelection', '')
@@ -330,7 +333,7 @@ def setup_single_baseline(serving_config: Dict[str, Any], global_config: Dict[st
             raise ValueError(f"hf_token must be specified for Helm-ProductionStack baseline {serving_index}")
         MODEL_URL = model_url
         HF_TOKEN = hf_token
-        helm_installation(baseline_config, global_config)
+        helm_installation_with_config(baseline_config, global_config)
 
     elif baseline_type == 'Direct-ProductionStack':
         model_url = baseline_config.get('modelURL')
@@ -483,87 +486,37 @@ def _override_sglang_yaml(base_config_list: list, override: Dict[str, Any]) -> l
 
     return updated_config_list
 
-def helm_installation(prodstack_config: Dict[str, Any], global_config: Dict[str, Any]) -> None:
+def helm_installation_with_config(prodstack_config: Dict[str, Any], global_config: Dict[str, Any]) -> None:
     """
-    Deploy the router and serving engines through production stack helm installation
+    Deploy the router and serving engines through production stack helm installation using config file selection
     """
-    prodstack_base_name = 'v0-base-production-stack.yaml'
-    generated_name = 'v0-generated-production-stack.yaml'
-    if prodstack_config.get('vLLM-Version') == 1:
-        prodstack_base_name = 'v1-base-production-stack.yaml'
-        generated_name = 'v1-generated-production-stack.yaml'
+    # Get the helm config file name
+    helm_config_filename = prodstack_config.get('helmConfigSelection')
+    if not helm_config_filename:
+        raise ValueError("helmConfigSelection must be specified in bench-spec.yaml for Helm-ProductionStack baseline")
 
-    base_yaml_file = Path(__file__).parent / '2-serving-engines' / 'helm-production-stack' / prodstack_base_name
+    # Ensure HF_TOKEN environment variable is set for the script
+    global HF_TOKEN
+    if not HF_TOKEN:
+        raise ValueError("HF_TOKEN is not set when trying to deploy Helm-ProductionStack baseline")
+    os.environ['HF_TOKEN'] = HF_TOKEN
 
-    if not base_yaml_file.exists():
-        raise FileNotFoundError(f"Base YAML file not found: {base_yaml_file}")
-
-    with open(base_yaml_file, 'r') as f:
-        base_config = yaml.safe_load(f)
-
-    updated_config = _override_yaml(base_config, prodstack_config)
-
-    # dump the updated config to the latest results folder for visibility
-    output_path = Path(__file__).parent / "4-latest-results" / generated_name
-    with open(output_path, 'w') as out:
-        yaml.dump(updated_config, out, default_flow_style=False)
-        print(f"Generated config written to {output_path}")
-
-    # Run the helm installation script
-    install_script = Path(__file__).parent / '2-serving-engines' / 'helm-production-stack' / 'helm-install.sh'
-    os.chmod(install_script, 0o755)
-    print("Running Helm install script...")
+    # Execute the choose-and-deploy script
+    deploy_script_path = Path(__file__).parent / '2-serving-engines' / 'helm-production-stack' / 'choose-and-deploy.sh'
+    os.chmod(deploy_script_path, 0o755)
 
     # Determine if we should skip node affinity based on Infrastructure.Location or command-line flag
     skip_node_affinity = GLOBAL_ARGS.skip_node_affinity or (global_config.get('Infrastructure', {}).get('Location') != 'LMCacheGKE')
 
-    cmd = [str(install_script), str(output_path)]
+    cmd = [str(deploy_script_path), str(helm_config_filename)]
     if skip_node_affinity:
         cmd.append("--skip-node-affinity")
 
-    subprocess.run(cmd, check=True)
-
-    # The patching of deployments to the appropriate node pools is now handled directly
-    # in the helm-install.sh script before waiting for pods to be ready
-
-def _override_yaml(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    try:
-        model_spec = base['servingEngineSpec']['modelSpec'][0]
-        vllm_config = model_spec['vllmConfig']
-        lmcache_config = model_spec.get('lmcacheConfig', {})
-    except (KeyError, IndexError, TypeError):
-        raise ValueError("Expected structure missing in base YAML")
-
-    # Apply only known, nested overrides
-    mapping = {
-        # modelSpec level
-        'modelURL': lambda v: model_spec.update({'modelURL': v}),
-        'replicaCount': lambda v: model_spec.update({'replicaCount': v}),
-        'hf_token': lambda v: model_spec.update({'hf_token': v}),
-        'numGPUs': lambda v: model_spec.update({'requestGPU': v}),
-        'numCPUs': lambda v: model_spec.update({'requestCPU': v}),
-
-        # vllmConfig level
-        'maxModelLen': lambda v: vllm_config.update({'maxModelLen': v}),
-        'tensorParallelSize': lambda v: vllm_config.update({'tensorParallelSize': v}),
-
-        # lmcacheConfig level
-        'useLMCache': lambda v: lmcache_config.update({'enabled': bool(v)}),
-        'cpuSize': lambda v: lmcache_config.update({'cpuOffloadingBufferSize': str(v)}),
-    }
-
-    # v1 specific overrides
-    if override.get('vLLM-Version') == 1:
-        mapping['enablePrefixCaching'] = lambda v: vllm_config.update({'enablePrefixCaching': bool(v)})
-
-    for key, val in override.items():
-        handler = mapping.get(key)
-        if handler:
-            handler(val)
-        else:
-            print(f"[warn] Ignoring unrecognized override key: '{key}'")
-
-    return base
+    result = subprocess.run(cmd, check=True)
+    if result.returncode == 0:
+        print("Helm deployment completed successfully")
+    else:
+        raise RuntimeError("Failed to deploy Helm")
 
 def kubernetes_application(direct_production_stack_config: Dict[str, Any], global_config: Dict[str, Any]) -> None:
     """
@@ -573,6 +526,12 @@ def kubernetes_application(direct_production_stack_config: Dict[str, Any], globa
     k8s_config_filename = direct_production_stack_config.get('kubernetesConfigSelection')
     if not k8s_config_filename:
         raise ValueError("kubernetesConfigSelection must be specified in bench-spec.yaml for Direct-ProductionStack baseline")
+
+    # Ensure HF_TOKEN environment variable is set for the script
+    global HF_TOKEN
+    if not HF_TOKEN:
+        raise ValueError("HF_TOKEN is not set when trying to deploy Direct-ProductionStack baseline")
+    os.environ['HF_TOKEN'] = HF_TOKEN
 
     # Execute the choose-and-deploy script
     deploy_script_path = Path(__file__).parent / '2-serving-engines' / 'direct-production-stack' / 'choose-and-deploy.sh'
@@ -1126,6 +1085,13 @@ def main() -> None:
 
     if args.start_from < 1 or args.start_from > 3:
         raise ValueError("Invalid start-from argument. Must be 1 (infrastructure), 2 (baseline), or 3 (workload).")
+
+    # Check if HF_TOKEN environment variable is set (unless injecting via command line)
+    if not args.hf_token and not os.environ.get('HF_TOKEN'):
+        print("Error: HF_TOKEN environment variable must be set!")
+        print("Please set the HF_TOKEN environment variable or use --hf-token argument.")
+        sys.exit(1)
+
     if args.model_url:
         print(f"Injecting model URL: {args.model_url}")
         global MODEL_URL
@@ -1134,6 +1100,8 @@ def main() -> None:
         print(f"Injecting HF token: {args.hf_token}")
         global HF_TOKEN
         HF_TOKEN = args.hf_token
+        # Also set the environment variable for scripts that need it
+        os.environ['HF_TOKEN'] = args.hf_token
     if args.key:
         print(f"Injecting key: {args.key}")
         global KEY

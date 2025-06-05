@@ -23,7 +23,7 @@ metadata:
   namespace: default
 type: Opaque
 data:
-  hf_token_llama3: "aGZfYmFjUHFjaE5CY0NtcWlXT2tmYUZiUkZaZXRXT1FjU2dkYw=="
+  hf_token_llama3: "<YOUR_HF_TOKEN_BASE64>"
 ---
 # Source: vllm-stack/templates/pvc.yaml
 apiVersion: v1

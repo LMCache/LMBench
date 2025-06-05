@@ -6,18 +6,16 @@ Serving:
 
   # use the latest helm repository from production-stack
   - Helm-ProductionStack:
-      vLLM-Version: 0
-      enablePrefixCaching: false # vllm v1 specific only (no prefix caching in v0)
-      useLMCache: false
-      modelURL: meta-llama/Llama-3.1-8B-Instruct
-      replicaCount: 1 # PLEASE make sure that replicaCount x numGPUs <= numClusterGPUs
-      numGPUs: 1 # PLEASE make sure that replicaCount x numGPUs <= numClusterGPUs
-      numCPUs: 4 # PLEASE look at the vCPU limits in the comment above (try to keep 12 or below)
-      tensorParallelSize: 1 # please make sure tensorParallelSize <= numGPUs (this is the number of GPUs per replica)
+      # this will start in the `2-serving-engines/helm-production-stack/helm_configurations/` directory
+      # examples:
+      # - helmConfigSelection: routing/1-kvaware.yaml
+      # - helmConfigSelection: basic/simple-vllm.yaml
+      helmConfigSelection: <NAME_OF_HELM_CONFIG_FILENAME>
 
       # You do NOT need to specify hf_token if you are using LMCacheGKE
       hf_token: <YOUR_HF_TOKEN>
-      maxModelLen: 16384
+      # Please make sure you are using the correct modelURL for the helm config you are using so that the workload generator can select the correct model
+      modelURL: <MODEL_USED_IN_HELM_CONFIG>
 
   # Any novel lmcache or production stack features can be tested here (before they are helm released)
   - Direct-ProductionStack:

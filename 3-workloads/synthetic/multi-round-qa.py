@@ -152,10 +152,23 @@ class RequestExecutor:
             start_time = time.time()
             first_token_time = None
 
+            # Convert chat messages to a single prompt string
+            prompt = ""
+            for msg in messages:
+                role = msg["role"]
+                content = msg["content"]
+                if role == "system":
+                    prompt += f"System: {content}\n"
+                elif role == "user":
+                    prompt += f"User: {content}\n"
+                elif role == "assistant":
+                    prompt += f"Assistant: {content}\n"
+            prompt += "Assistant: "
+
             # Make the request
-            response = await self.client.chat.completions.create(
+            response = await self.client.completions.create(
+                prompt=prompt,
                 model=self.model,
-                messages=messages,
                 stream=True,
                 max_tokens=max_tokens,
                 temperature=0.0,
@@ -169,10 +182,10 @@ class RequestExecutor:
                     continue
 
                 # Handle content
-                if chunk.choices[0].delta.content is not None:
-                    if first_token_time is None and chunk.choices[0].delta.content != "":
+                if chunk.choices[0].text is not None:
+                    if first_token_time is None and chunk.choices[0].text != "":
                         first_token_time = time.time()
-                    words += chunk.choices[0].delta.content
+                    words += chunk.choices[0].text
 
             # Handle token counts if available
             if hasattr(chunk, 'usage') and chunk.usage is not None:
@@ -184,9 +197,9 @@ class RequestExecutor:
                 print("No token counts from streaming, getting final response")
                 print(f"{tokens_out}, {tokens_prefill}")
                 try:
-                    final_response = await self.client.chat.completions.create(
+                    final_response = await self.client.completions.create(
+                        prompt=prompt,
                         model=self.model,
-                        messages=messages,
                         stream=False,
                     )
                     if hasattr(final_response, 'usage') and final_response.usage is not None:
