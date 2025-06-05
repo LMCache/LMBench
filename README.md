@@ -2,8 +2,6 @@
 
 [Dashboard: lmbench.dev](https://lmbench.dev/)
 
-WARNING: Dashboard and artifact formats are under heavy refactoring!
-
 # E2E: From `run-bench.yaml` to Artifacts
 
 Specify which benchmarking suites you want to run inside of `run-bench.yaml`.
