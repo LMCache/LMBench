@@ -30,10 +30,10 @@ Workload:
   LMCacheSynthetic:
     # long input short output:
     - NUM_USERS_WARMUP: 20
-      NUM_USERS: 20
+      NUM_USERS: 25
       NUM_ROUNDS: 20
       SYSTEM_PROMPT: 1000
       CHAT_HISTORY: 20000
       ANSWER_LEN: 100
-      QPS: [0.1, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, 3.2, 3.6, 4.0, 4.4, 4.8, 5.2, 5.6, 6.0, 6.4, 6.8]
+      QPS: [4, 5, 6, 8]
       USE_SHAREGPT: false

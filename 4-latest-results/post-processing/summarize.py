@@ -154,6 +154,17 @@ def process_output(filename: str, **kwargs):
         serving_index = kwargs.get('SERVING_INDEX')
         spec_file_path = kwargs.get('SPEC_FILE_PATH')
 
+        # For agentic workload, calculate QPS from the data instead of using passed QPS
+        if workload == 'agentic' and not df.empty:
+            # Calculate QPS as total_requests / total_duration
+            start_time = df["launch_time"].min()
+            end_time = df["finish_time"].max()
+            total_duration = end_time - start_time
+            total_requests = len(df)
+            calculated_qps = round(total_requests / total_duration, 2) if total_duration > 0 else 0
+            qps = calculated_qps
+            print(f"Calculated QPS for agentic workload: {qps}")
+
         # Create timestamp
         timestamp = datetime.now().strftime("%Y%m%d-%H%M")
 
@@ -187,6 +198,10 @@ def process_output(filename: str, **kwargs):
         # Create workload info (exclude sensitive and internal parameters)
         workload_info = {k: v for k, v in kwargs.items()
                         if k not in ['NAME', 'KEY', 'SERVING_INDEX', 'SPEC_FILE_PATH']}
+
+        # Add calculated QPS to workload info for agentic workloads
+        if workload == 'agentic':
+            workload_info['CALCULATED_QPS'] = qps
 
         # Create the final JSON structure
         output_data = {
