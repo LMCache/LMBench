@@ -147,4 +147,57 @@ Workload:
       ANSWER_LEN: 200
       QPS: [0.5]
 
+  VLLMBenchmark:
+    # Super minimal configuration - only required parameters
+    - BACKEND: vllm
+      DATASET_NAME: random
+      NUM_PROMPTS: 100
+      REQUEST_RATES: [1.0]
+
+    # VLLMBenchmark workload uses the vLLM benchmark serving script
+    # This provides comprehensive benchmarking capabilities with various datasets
+    - BACKEND: vllm  # Backend type: vllm, openai, etc.
+      DATASET_NAME: random  # Dataset: sharegpt, random, sonnet, hf, custom
+      DATASET_PATH: ""  # Path to dataset file (leave empty for built-in datasets)
+      NUM_PROMPTS: 1000  # Number of prompts to process
+      REQUEST_RATES: [1.0, 2.0, 5.0]  # Request rates to test (requests per second)
+
+      # Optional sampling parameters
+      TEMPERATURE: 0.0  # Temperature for sampling (0.0 for greedy)
+      TOP_P: 0.9  # Top-p sampling parameter
+      TOP_K: 50   # Top-k sampling parameter
+      MAX_TOKENS: 256  # Maximum tokens to generate
+
+      # Optional benchmark parameters
+      BURSTINESS: 1.0  # Burstiness factor (1.0 = Poisson process)
+      SEED: 0  # Random seed for reproducibility
+      DISABLE_TQDM: true  # Disable progress bar
+      IGNORE_EOS: false  # Ignore end-of-sequence tokens
+
+      # For Random dataset:
+      RANDOM_INPUT_LEN: 1024   # Input length for random prompts
+      RANDOM_OUTPUT_LEN: 128   # Output length for random prompts
+      RANDOM_RANGE_RATIO: 0.0  # Range ratio for length variation
+
+    # Example with Sonnet dataset (requires sonnet.txt file)
+    - BACKEND: vllm
+      DATASET_NAME: sonnet
+      DATASET_PATH: "3-workloads/vllm-benchmark-serving/sonnet.txt"  # Path to sonnet file
+      NUM_PROMPTS: 500
+      REQUEST_RATES: [0.5, 1.0]
+      SONNET_INPUT_LEN: 550    # Input length for sonnet prompts
+      SONNET_OUTPUT_LEN: 150   # Output length for sonnet prompts
+      SONNET_PREFIX_LEN: 200   # Prefix length for sonnet prompts
+      TEMPERATURE: 0.7
+      SEED: 42
+
+    # Example with HuggingFace dataset (MT-Bench is non-multimodal)
+    - BACKEND: vllm
+      DATASET_NAME: hf
+      DATASET_PATH: "philschmid/mt-bench"  # HuggingFace dataset ID
+      NUM_PROMPTS: 200
+      REQUEST_RATES: [1.0, 2.0]
+      TEMPERATURE: 0.0
+      MAX_TOKENS: 256
+
 

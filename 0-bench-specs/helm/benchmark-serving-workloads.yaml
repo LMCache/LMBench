@@ -1,0 +1,73 @@
+Name: benchmark-serving-workloads
+
+# Suggested Infrastructure (in run-bench.yaml)
+# 1-infrastructure:
+#   Location: LMCacheGKE
+#   numClusterGPUs: 1
+#   A100_VRAM: 40
+#   OR
+#   Location: LocalMinikube
+
+Serving:
+  - Helm-ProductionStack:
+      helmConfigSelection: basic/llama-3.1-8b-basic.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+
+Workload:
+  # VLLMBenchmark workload configurations for comprehensive vLLM serving benchmarks
+  # This focuses on the most important benchmark scenarios for vLLM serving performance
+
+  VLLMBenchmark:
+
+    # Super minimal configuration - only required parameters
+    # Random synthetic dataset - Good for testing raw throughput without dataset dependencies
+    - BACKEND: vllm
+      DATASET_NAME: random
+      DATASET_PATH: ""  # Empty for synthetic generation
+      NUM_PROMPTS: 100
+      REQUEST_RATES: [1.0]
+      TEMPERATURE: 0.7
+      MAX_TOKENS: 128
+      SEED: 42
+      RANDOM_INPUT_LEN: 512
+      RANDOM_OUTPUT_LEN: 64
+      RANDOM_RANGE_RATIO: 0.0
+
+    # Sonnet dataset - Poetry/literature benchmark
+    # Uses the sonnet.txt file we created
+    - BACKEND: vllm
+      DATASET_NAME: sonnet
+      DATASET_PATH: "3-workloads/vllm-benchmark-serving/sonnet.txt"
+      NUM_PROMPTS: 100
+      REQUEST_RATES: [1.0]
+      TEMPERATURE: 0.0
+      MAX_TOKENS: 150
+      SEED: 42
+      SONNET_INPUT_LEN: 550
+      SONNET_OUTPUT_LEN: 150
+      SONNET_PREFIX_LEN: 200
+
+    # HuggingFace dataset example - External dataset benchmark
+    # Using MT-Bench dataset which is verified to work and is non-multimodal
+    - BACKEND: vllm
+      DATASET_NAME: hf
+      DATASET_PATH: "philschmid/mt-bench"  # Verified working HF dataset
+      NUM_PROMPTS: 100
+      REQUEST_RATES: [0.5]
+      TEMPERATURE: 0.0
+      MAX_TOKENS: 200
+      SEED: 42
+
+    # High throughput test - Testing maximum QPS capabilities
+    - BACKEND: vllm
+      DATASET_NAME: random
+      DATASET_PATH: ""
+      NUM_PROMPTS: 100
+      REQUEST_RATES: [10.0]  # High QPS test
+      TEMPERATURE: 0.0
+      MAX_TOKENS: 64  # Shorter responses for high throughput
+      SEED: 42
+      RANDOM_INPUT_LEN: 256  # Shorter inputs for high throughput
+      RANDOM_OUTPUT_LEN: 32
+      DISABLE_TQDM: true

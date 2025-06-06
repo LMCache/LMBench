@@ -165,6 +165,13 @@ def process_output(filename: str, **kwargs):
             qps = calculated_qps
             print(f"Calculated QPS for agentic workload: {qps}")
 
+        # For vllm_benchmark workload, use REQUEST_RATE as QPS (target QPS is what matters)
+        if workload == 'vllm_benchmark':
+            # Use REQUEST_RATE as the QPS (this is the target QPS from the benchmark)
+            request_rate = kwargs.get('REQUEST_RATE', 'unknown')
+            qps = request_rate
+            print(f"Using REQUEST_RATE as QPS for vllm_benchmark workload: {qps}")
+
         # Create timestamp
         timestamp = datetime.now().strftime("%Y%m%d-%H%M")
 
@@ -201,7 +208,11 @@ def process_output(filename: str, **kwargs):
 
         # Add calculated QPS to workload info for agentic workloads
         if workload == 'agentic':
-            workload_info['CALCULATED_QPS'] = qps
+            workload_info['QPS'] = qps
+
+        # Add QPS info to workload info for vllm_benchmark workloads
+        if workload == 'vllm_benchmark':
+            workload_info['QPS'] = qps  # This is the target QPS (REQUEST_RATE)
 
         # Create the final JSON structure
         output_data = {

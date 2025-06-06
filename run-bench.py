@@ -606,7 +606,7 @@ def run_workload(config: Dict[str, Any]) -> None:
 
     workload_cfg = config['Workload']
 
-    supported_workloads = ['ShareGPT', 'LMCacheSynthetic', 'Agentic', 'Mooncake', 'Random']
+    supported_workloads = ['ShareGPT', 'LMCacheSynthetic', 'Agentic', 'Mooncake', 'Random', 'VLLMBenchmark']
     for workload in workload_cfg:
         if workload not in supported_workloads:
             raise ValueError(f"Unsupported workload type: {workload}")
@@ -651,6 +651,14 @@ def run_workload(config: Dict[str, Any]) -> None:
                 run_random(config)
         else:
             run_random(random_config)
+
+    if 'VLLMBenchmark' in workload_cfg:
+        vllm_benchmark_config = workload_cfg['VLLMBenchmark']
+        if isinstance(vllm_benchmark_config, list):
+            for config in vllm_benchmark_config:
+                run_vllm_benchmark(config)
+        else:
+            run_vllm_benchmark(vllm_benchmark_config)
 
 def run_sharegpt(sharegpt_config: Dict[str, Any]) -> None:
     """Run the ShareGPT workload with the specified configuration."""
@@ -715,7 +723,7 @@ def sharegpt_run_workload(sharegpt_config: Dict[str, Any]) -> None:
 
     cmd = [str(workload_exec_script_path)]
     cmd.extend([str(MODEL_URL)])
-    cmd.extend(["http://localhost:30080/v1/"]) # the base URL when serving with production stack
+    cmd.extend(["http://localhost:30080"]) # the base URL when serving with production stack
     cmd.extend([KEY]) # the key that will be embedded in the filenames of the results
     limit = sharegpt_config.get('LIMIT')
     min_rounds = sharegpt_config.get('MIN_ROUNDS')
@@ -783,7 +791,7 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
 
     cmd = [str(workload_exec_script_path)]
     cmd.extend([str(MODEL_URL)])
-    cmd.extend(["http://localhost:30080/v1/"]) # the base URL when serving with production stack
+    cmd.extend(["http://localhost:30080"]) # the base URL when serving with production stack
     cmd.extend([KEY]) # the key that will be embedded in the filenames of the results
 
     """
@@ -845,7 +853,7 @@ def run_mooncake(mooncake_config: Dict[str, Any]) -> None:
 
     cmd = [str(workload_exec_script_path)]
     cmd.extend([str(MODEL_URL)])
-    cmd.extend(["http://localhost:30080/v1/"]) # the base URL when serving with production stack
+    cmd.extend(["http://localhost:30080"]) # the base URL when serving with production stack
     cmd.extend([KEY]) # the key that will be embedded in the filenames of the results
     cmd.extend([str(NUM_ROUNDS)])
     cmd.extend([str(SYSTEM_PROMPT)])
@@ -887,7 +895,7 @@ def run_agentic(agentic_config: Dict[str, Any]) -> None:
 
     cmd = [str(workload_exec_script_path)]
     cmd.extend([str(MODEL_URL)])
-    cmd.extend(["http://localhost:30080/v1/"]) # the base URL when serving with production stack
+    cmd.extend(["http://localhost:30080"]) # the base URL when serving with production stack
     cmd.extend([KEY]) # the key that will be embedded in the filenames of the results
     cmd.extend([str(NUM_USERS_WARMUP)])
     cmd.extend([str(NUM_AGENTS)])
@@ -930,7 +938,7 @@ def run_random(random_config: Dict[str, Any]) -> None:
 
     cmd = [str(workload_exec_script_path)]
     cmd.extend([str(MODEL_URL)])
-    cmd.extend(["http://localhost:30080/v1/"]) # the base URL when serving with production stack
+    cmd.extend(["http://localhost:30080"]) # the base URL when serving with production stack
     cmd.extend([KEY]) # the key that will be embedded in the filenames of the results
 
     """
@@ -964,6 +972,110 @@ def run_random(random_config: Dict[str, Any]) -> None:
         print("Random workloads completed successfully")
     else:
         raise RuntimeError("Failed to run Random workload")
+
+def run_vllm_benchmark(vllm_benchmark_config: Dict[str, Any]) -> None:
+    """Run the VLLMBenchmark workload with the specified configuration."""
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH
+
+    # Read the benchmark name from the current spec config
+    benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
+
+    # Get VLLMBenchmark specific parameters
+    backend = vllm_benchmark_config.get('BACKEND', 'vllm')
+    dataset_name = vllm_benchmark_config.get('DATASET_NAME', 'sharegpt')
+    dataset_path = vllm_benchmark_config.get('DATASET_PATH')
+    num_prompts = vllm_benchmark_config.get('NUM_PROMPTS', 1000)
+    request_rates = vllm_benchmark_config.get('REQUEST_RATES', [1.0])
+
+    # Optional parameters that can be passed as additional arguments
+    additional_args = []
+
+    # Add optional parameters if specified
+    if 'TEMPERATURE' in vllm_benchmark_config:
+        additional_args.extend(['--temperature', str(vllm_benchmark_config['TEMPERATURE'])])
+    if 'TOP_P' in vllm_benchmark_config:
+        additional_args.extend(['--top-p', str(vllm_benchmark_config['TOP_P'])])
+    if 'TOP_K' in vllm_benchmark_config:
+        additional_args.extend(['--top-k', str(vllm_benchmark_config['TOP_K'])])
+    if 'BURSTINESS' in vllm_benchmark_config:
+        additional_args.extend(['--burstiness', str(vllm_benchmark_config['BURSTINESS'])])
+    if 'SEED' in vllm_benchmark_config:
+        additional_args.extend(['--seed', str(vllm_benchmark_config['SEED'])])
+    if 'DISABLE_TQDM' in vllm_benchmark_config and vllm_benchmark_config['DISABLE_TQDM']:
+        additional_args.append('--disable-tqdm')
+    if 'IGNORE_EOS' in vllm_benchmark_config and vllm_benchmark_config['IGNORE_EOS']:
+        additional_args.append('--ignore-eos')
+
+    # Handle dataset-specific parameters and max tokens conversion
+    if dataset_name == 'sharegpt':
+        if 'SHAREGPT_OUTPUT_LEN' in vllm_benchmark_config:
+            additional_args.extend(['--sharegpt-output-len', str(vllm_benchmark_config['SHAREGPT_OUTPUT_LEN'])])
+        elif 'MAX_TOKENS' in vllm_benchmark_config:
+            # Convert MAX_TOKENS to sharegpt-specific parameter
+            additional_args.extend(['--sharegpt-output-len', str(vllm_benchmark_config['MAX_TOKENS'])])
+    elif dataset_name == 'random':
+        if 'RANDOM_INPUT_LEN' in vllm_benchmark_config:
+            additional_args.extend(['--random-input-len', str(vllm_benchmark_config['RANDOM_INPUT_LEN'])])
+        if 'RANDOM_OUTPUT_LEN' in vllm_benchmark_config:
+            additional_args.extend(['--random-output-len', str(vllm_benchmark_config['RANDOM_OUTPUT_LEN'])])
+        elif 'MAX_TOKENS' in vllm_benchmark_config:
+            # Convert MAX_TOKENS to random-specific parameter
+            additional_args.extend(['--random-output-len', str(vllm_benchmark_config['MAX_TOKENS'])])
+        if 'RANDOM_RANGE_RATIO' in vllm_benchmark_config:
+            additional_args.extend(['--random-range-ratio', str(vllm_benchmark_config['RANDOM_RANGE_RATIO'])])
+    elif dataset_name == 'sonnet':
+        if 'SONNET_INPUT_LEN' in vllm_benchmark_config:
+            additional_args.extend(['--sonnet-input-len', str(vllm_benchmark_config['SONNET_INPUT_LEN'])])
+        if 'SONNET_OUTPUT_LEN' in vllm_benchmark_config:
+            additional_args.extend(['--sonnet-output-len', str(vllm_benchmark_config['SONNET_OUTPUT_LEN'])])
+        elif 'MAX_TOKENS' in vllm_benchmark_config:
+            # Convert MAX_TOKENS to sonnet-specific parameter
+            additional_args.extend(['--sonnet-output-len', str(vllm_benchmark_config['MAX_TOKENS'])])
+        if 'SONNET_PREFIX_LEN' in vllm_benchmark_config:
+            additional_args.extend(['--sonnet-prefix-len', str(vllm_benchmark_config['SONNET_PREFIX_LEN'])])
+    elif dataset_name == 'hf':
+        if 'HF_OUTPUT_LEN' in vllm_benchmark_config:
+            additional_args.extend(['--hf-output-len', str(vllm_benchmark_config['HF_OUTPUT_LEN'])])
+        elif 'MAX_TOKENS' in vllm_benchmark_config:
+            # Convert MAX_TOKENS to hf-specific parameter
+            additional_args.extend(['--hf-output-len', str(vllm_benchmark_config['MAX_TOKENS'])])
+    elif dataset_name == 'custom':
+        if 'CUSTOM_OUTPUT_LEN' in vllm_benchmark_config:
+            additional_args.extend(['--custom-output-len', str(vllm_benchmark_config['CUSTOM_OUTPUT_LEN'])])
+        elif 'MAX_TOKENS' in vllm_benchmark_config:
+            # Convert MAX_TOKENS to custom-specific parameter
+            additional_args.extend(['--custom-output-len', str(vllm_benchmark_config['MAX_TOKENS'])])
+
+    workload_exec_script_path = Path(__file__).parent / '3-workloads' / 'vllm-benchmark-serving' / 'run_vllm_benchmark_serving.sh'
+    if not workload_exec_script_path.exists():
+        raise FileNotFoundError(f"VLLMBenchmark script not found at {workload_exec_script_path}")
+
+    os.chmod(workload_exec_script_path, 0o755)
+
+    # Run benchmarks for each request rate
+    for request_rate in request_rates:
+        cmd = [str(workload_exec_script_path)]
+        cmd.extend([str(MODEL_URL)])
+        cmd.extend(["http://localhost:30080/v1"]) # the base URL when serving with production stack (fixed to include /v1)
+        cmd.extend([KEY]) # the key that will be embedded in the filenames of the results
+        cmd.extend([backend])
+        cmd.extend([dataset_name])
+        cmd.extend([dataset_path or ""])  # Use empty string if dataset_path is None
+        cmd.extend([str(num_prompts)])
+        cmd.extend([str(benchmark_name)])
+        cmd.extend([str(CURRENT_SERVING_INDEX)])
+        cmd.extend([str(CURRENT_SPEC_FILE_PATH)]) # Pass the spec file path
+        cmd.extend([str(request_rate)])
+        cmd.extend(additional_args)
+
+        # Execute the workload
+        print(f"Running VLLMBenchmark workload with request rate {request_rate} and parameters: {' '.join(cmd)}")
+        result = subprocess.run(cmd, check=True)
+
+        if result.returncode == 0:
+            print(f"VLLMBenchmark workload completed successfully for request rate {request_rate}")
+        else:
+            raise RuntimeError(f"Failed to run VLLMBenchmark workload for request rate {request_rate}")
 
 def clean_up() -> None:
     """

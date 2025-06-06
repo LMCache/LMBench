@@ -1,11 +1,13 @@
 0-bench-specs:
-  - helm/routing-benchmarks.yaml
+  - helm/benchmark-serving-workloads.yaml
+  # - helm/basic-spec.yaml # really good for debugging workloads
+  # - helm/routing-benchmarks.yaml
   # - routing/8-spec.yaml
   # - daily/4-llama8B/prodstack.yaml
 
 1-infrastructure:
-  # Location: LocalMinikube
+  Location: LocalMinikube
   # # Location: NoBench
-  Location: LMCacheGKE
-  numClusterGPUs: 4
-  A100_VRAM: 40
+  # Location: LMCacheGKE
+  # numClusterGPUs: 4
+  # A100_VRAM: 40

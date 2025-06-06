@@ -9,3 +9,4 @@ transformers
 pandas
 tqdm
 matplotlib
+datasets
