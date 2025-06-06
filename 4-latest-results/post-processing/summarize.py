@@ -154,23 +154,58 @@ def process_output(filename: str, **kwargs):
         serving_index = kwargs.get('SERVING_INDEX')
         spec_file_path = kwargs.get('SPEC_FILE_PATH')
 
-        # For agentic workload, calculate QPS from the data instead of using passed QPS
-        if workload == 'agentic' and not df.empty:
-            # Calculate QPS as total_requests / total_duration
-            start_time = df["launch_time"].min()
-            end_time = df["finish_time"].max()
-            total_duration = end_time - start_time
-            total_requests = len(df)
-            calculated_qps = round(total_requests / total_duration, 2) if total_duration > 0 else 0
-            qps = calculated_qps
-            print(f"Calculated QPS for agentic workload: {qps}")
+        # Check if this is a VLLMBenchmark CSV (key-value format)
+        is_vllm_benchmark = (workload == 'vllm_benchmark' or workload.startswith('vllm_')) and 'metric' in df.columns and 'value' in df.columns
 
-        # For vllm_benchmark workload, use REQUEST_RATE as QPS (target QPS is what matters)
-        if workload == 'vllm_benchmark':
-            # Use REQUEST_RATE as the QPS (this is the target QPS from the benchmark)
+        if is_vllm_benchmark:
+            # Handle VLLMBenchmark CSV format (key-value pairs)
+            print(f"Processing VLLMBenchmark CSV format for {workload}")
+
+            # Convert key-value pairs to dictionary
+            metrics_dict = dict(zip(df['metric'], df['value']))
+
+            # Extract metrics from the VLLMBenchmark output
+            results = {
+                "successful_requests": int(float(metrics_dict.get('completed', 0))),
+                "failed_requests": 0,  # VLLMBenchmark doesn't track failed requests separately
+                "total_requests": int(float(metrics_dict.get('completed', 0))),
+                "duration": float(metrics_dict.get('duration', 0)),
+                "request_throughput": float(metrics_dict.get('request_throughput', 0)),
+                "total_input_tokens": int(float(metrics_dict.get('total_input_tokens', 0))),
+                "total_output_tokens": int(float(metrics_dict.get('total_output_tokens', 0))),
+                "output_token_throughput": float(metrics_dict.get('output_throughput', 0)),
+                "total_token_throughput": float(metrics_dict.get('total_token_throughput', 0)),
+                "mean_ttft_ms": float(metrics_dict.get('mean_ttft_ms', 0)),
+                "median_ttft_ms": float(metrics_dict.get('median_ttft_ms', 0)),
+                "p99_ttft_ms": float(metrics_dict.get('p99_ttft_ms', 0)),
+                "mean_tpot_ms": float(metrics_dict.get('mean_tpot_ms', 0)),
+                "median_tpot_ms": float(metrics_dict.get('median_tpot_ms', 0)),
+                "p99_tpot_ms": float(metrics_dict.get('p99_tpot_ms', 0)),
+                "mean_itl_ms": float(metrics_dict.get('mean_itl_ms', 0)),
+                "median_itl_ms": float(metrics_dict.get('median_itl_ms', 0)),
+                "p99_itl_ms": float(metrics_dict.get('p99_itl_ms', 0))
+            }
+
+            # Use REQUEST_RATE as QPS for VLLMBenchmark workloads
             request_rate = kwargs.get('REQUEST_RATE', 'unknown')
             qps = request_rate
-            print(f"Using REQUEST_RATE as QPS for vllm_benchmark workload: {qps}")
+            print(f"Using REQUEST_RATE as QPS for {workload} workload: {qps}")
+
+        else:
+            # Handle standard CSV format (individual request data)
+            # For agentic workload, calculate QPS from the data instead of using passed QPS
+            if workload == 'agentic' and not df.empty:
+                # Calculate QPS as total_requests / total_duration
+                start_time = df["launch_time"].min()
+                end_time = df["finish_time"].max()
+                total_duration = end_time - start_time
+                total_requests = len(df)
+                calculated_qps = round(total_requests / total_duration, 2) if total_duration > 0 else 0
+                qps = calculated_qps
+                print(f"Calculated QPS for agentic workload: {qps}")
+
+            # Process benchmark results using the standard method
+            results = ProcessSummary(df, pending_queries=0)
 
         # Create timestamp
         timestamp = datetime.now().strftime("%Y%m%d-%H%M")
@@ -182,9 +217,6 @@ def process_output(filename: str, **kwargs):
 
         # Create the suite directory if it doesn't exist
         os.makedirs(suite_dir, exist_ok=True)
-
-        # Process benchmark results
-        results = ProcessSummary(df, pending_queries=0)
 
         # Read infrastructure info from run-bench.yaml
         infra_info = get_infrastructure_info()
@@ -211,7 +243,7 @@ def process_output(filename: str, **kwargs):
             workload_info['QPS'] = qps
 
         # Add QPS info to workload info for vllm_benchmark workloads
-        if workload == 'vllm_benchmark':
+        if workload == 'vllm_benchmark' or workload.startswith('vllm_'):
             workload_info['QPS'] = qps  # This is the target QPS (REQUEST_RATE)
 
         # Create the final JSON structure
