@@ -240,7 +240,7 @@ def process_output(filename: str, **kwargs):
 
         # Create workload info (exclude sensitive and internal parameters)
         workload_info = {k: v for k, v in kwargs.items()
-                        if k not in ['NAME', 'KEY', 'SERVING_INDEX', 'SPEC_FILE_PATH']}
+                        if k not in ['NAME', 'KEY', 'SERVING_INDEX', 'SPEC_FILE_PATH', 'LMBENCH_SESSION_ID']}
 
         # Add calculated QPS to workload info for agentic workloads
         if workload == 'agentic':
@@ -250,9 +250,13 @@ def process_output(filename: str, **kwargs):
         if workload == 'vllm_benchmark' or workload.startswith('vllm_'):
             workload_info['QPS'] = qps  # This is the target QPS (REQUEST_RATE)
 
+        # Extract session ID from kwargs
+        session_id = kwargs.get('LMBENCH_SESSION_ID', 'unknown')
+
         # Create the final JSON structure
         output_data = {
             "name": bench_name,
+            "lmbench-session-id": session_id,
             "timestamp": timestamp,
             "results": results,
             "infra": infra_info,

@@ -5,9 +5,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../../" && pwd )"
 cd "$SCRIPT_DIR"
 
-if [[ $# -lt 11 ]]; then
-    echo "Usage: $0 <model> <base url> <save file key> <backend> <dataset_name> <dataset_path> <num_prompts> <name> <serving_index> <spec_file_path> <request_rate> [additional_args...]"
-    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:30080/v1 test vllm random \"\" 100 benchmark-serving-workloads 0 0-bench-specs/helm/benchmark-serving-workloads.yaml 1.0 --temperature 0.0"
+if [[ $# -lt 12 ]]; then
+    echo "Usage: $0 <model> <base url> <save file key> <backend> <dataset_name> <dataset_path> <num_prompts> <name> <serving_index> <spec_file_path> <lmbench_session_id> <request_rate> [additional_args...]"
+    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:30080/v1 test vllm random \"\" 100 benchmark-serving-workloads 0 0-bench-specs/helm/benchmark-serving-workloads.yaml session123 1.0 --temperature 0.0"
     exit 1
 fi
 
@@ -21,8 +21,9 @@ NUM_PROMPTS=$7
 NAME=$8
 SERVING_INDEX=$9
 SPEC_FILE_PATH=${10}
-REQUEST_RATE=${11}
-shift 11  # Remove first 11 arguments
+LMBENCH_SESSION_ID=${11}
+REQUEST_RATE=${12}
+shift 12  # Remove first 12 arguments
 ADDITIONAL_ARGS="$@"  # Remaining arguments
 
 # Create output directory
@@ -183,7 +184,8 @@ if [[ $? -eq 0 ]]; then
         NUM_PROMPTS="$NUM_PROMPTS" \
         REQUEST_RATE="$REQUEST_RATE" \
         SERVING_INDEX="$SERVING_INDEX" \
-        SPEC_FILE_PATH="$SPEC_FILE_PATH"
+        SPEC_FILE_PATH="$SPEC_FILE_PATH" \
+        LMBENCH_SESSION_ID="$LMBENCH_SESSION_ID"
 
     # Change back to script directory
     cd "$SCRIPT_DIR"

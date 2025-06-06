@@ -5,9 +5,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../../" && pwd )"
 cd "$SCRIPT_DIR"
 
-if [[ $# -lt 10 ]]; then
-    echo "Usage: $0 <model> <base url> <save file key> <num rounds> <system prompt> <chat history> <answer len> <name> <serving_index> <spec_file_path>"
-    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:8000 test 10 0 256 20 layerwise-benchmark 0 0-bench-specs/layerwise-spec.yaml"
+if [[ $# -lt 11 ]]; then
+    echo "Usage: $0 <model> <base url> <save file key> <num rounds> <system prompt> <chat history> <answer len> <name> <serving_index> <spec_file_path> <lmbench_session_id>"
+    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:8000 test 10 0 256 20 layerwise-benchmark 0 0-bench-specs/layerwise-spec.yaml lmbench-1234567890-abcd1234"
     exit 1
 fi
 
@@ -23,6 +23,7 @@ ANSWER_LEN=$7 # Generation length per round
 NAME=$8
 SERVING_INDEX=$9
 SPEC_FILE_PATH=${10}
+LMBENCH_SESSION_ID=${11}
 
 run_mooncake() {
     # $1: qps
@@ -70,7 +71,8 @@ for qps in "${QPS_VALUES[@]}"; do
         ANSWER_LEN="$ANSWER_LEN" \
         QPS="$qps" \
         SERVING_INDEX="$SERVING_INDEX" \
-        SPEC_FILE_PATH="$SPEC_FILE_PATH"
+        SPEC_FILE_PATH="$SPEC_FILE_PATH" \
+        LMBENCH_SESSION_ID="$LMBENCH_SESSION_ID"
 
     # Change back to script directory
     cd "$SCRIPT_DIR"

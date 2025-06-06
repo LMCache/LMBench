@@ -7,9 +7,9 @@ cd "$SCRIPT_DIR"
 
 # Set the path to the 4-latest-results directory
 
-if [[ $# -lt 9 ]]; then
-    echo "Usage: $0 <model> <base url> <save file key> <limit> <min_rounds> <start_round> <name> <serving_index> <spec_file_path> [qps_values...]"
-    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:8000 /mnt/requests/sharegpt-run1 1000 10 0 layerwise-benchmark 0 0-bench-specs/layerwise-spec.yaml 1.34 2.0 3.0"
+if [[ $# -lt 10 ]]; then
+    echo "Usage: $0 <model> <base url> <save file key> <limit> <min_rounds> <start_round> <name> <serving_index> <spec_file_path> <lmbench_session_id> [qps_values...]"
+    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:8000 /mnt/requests/sharegpt-run1 1000 10 0 layerwise-benchmark 0 0-bench-specs/layerwise-spec.yaml lmbench-1234567890-abcd1234 1.34 2.0 3.0"
     exit 1
 fi
 
@@ -22,10 +22,11 @@ START_ROUND=$6
 NAME=$7
 SERVING_INDEX=$8
 SPEC_FILE_PATH=$9
+LMBENCH_SESSION_ID=${10}
 
 # If QPS values are provided, use them; otherwise use default
-if [[ $# -gt 9 ]]; then
-    QPS_VALUES=("${@:10}")
+if [[ $# -gt 10 ]]; then
+    QPS_VALUES=("${@:11}")
 else
     QPS_VALUES=(1.34)  # Default QPS value
 fi
@@ -79,7 +80,8 @@ for qps in "${QPS_VALUES[@]}"; do
         START_ROUND="$START_ROUND" \
         QPS="$qps" \
         SERVING_INDEX="$SERVING_INDEX" \
-        SPEC_FILE_PATH="$SPEC_FILE_PATH"
+        SPEC_FILE_PATH="$SPEC_FILE_PATH" \
+        LMBENCH_SESSION_ID="$LMBENCH_SESSION_ID"
     # Change back to script directory
     cd "$SCRIPT_DIR"
 done

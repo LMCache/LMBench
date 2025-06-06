@@ -5,9 +5,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 cd "$SCRIPT_DIR"
 
-if [[ $# -lt 13 ]]; then
-    echo "Usage: $0 <model> <base url> <save file key> <num_users_warmup> <num_users> <num_rounds> <system_prompt> <chat_history> <answer_len> <use_sharegpt> <name> <serving_index> <spec_file_path> [qps_values...]"
-    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:8000 test 0 10 2 0 8000 20 false layerwise-benchmark 0 0-bench-specs/layerwise-spec.yaml 0.5"
+if [[ $# -lt 14 ]]; then
+    echo "Usage: $0 <model> <base url> <save file key> <num_users_warmup> <num_users> <num_rounds> <system_prompt> <chat_history> <answer_len> <use_sharegpt> <name> <serving_index> <spec_file_path> <lmbench_session_id> [qps_values...]"
+    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:8000 test 0 10 2 0 8000 20 false layerwise-benchmark 0 0-bench-specs/layerwise-spec.yaml lmbench-1234567890-abcd1234 0.5"
     exit 1
 fi
 
@@ -26,10 +26,11 @@ USE_SHAREGPT=${10}
 NAME=${11}
 SERVING_INDEX=${12}
 SPEC_FILE_PATH=${13}
+LMBENCH_SESSION_ID=${14}
 
 # If QPS values are provided, use them; otherwise use default
-if [ $# -gt 13 ]; then
-    QPS_VALUES=("${@:14}")
+if [ $# -gt 14 ]; then
+    QPS_VALUES=("${@:15}")
 else
     QPS_VALUES=(0.7)  # Default QPS value
 fi
@@ -103,7 +104,8 @@ for qps in "${QPS_VALUES[@]}"; do
         QPS="$qps" \
         USE_SHAREGPT="$USE_SHAREGPT" \
         SERVING_INDEX="$SERVING_INDEX" \
-        SPEC_FILE_PATH="$SPEC_FILE_PATH"
+        SPEC_FILE_PATH="$SPEC_FILE_PATH" \
+        LMBENCH_SESSION_ID="$LMBENCH_SESSION_ID"
 
     # Change back to script directory
     cd "$SCRIPT_DIR"

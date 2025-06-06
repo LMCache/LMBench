@@ -16,7 +16,7 @@ Definition: every single one of these specification files is a benchmarking **"s
 
 ## Step 2: Choose which benchmarking suites you want to run in your LMBench "session"
 
-Definition: every time you deploy LMBench, this is defined as a benchmarking **"session"**. [lmbench.dev](lmbench.dev) allows you to view the results specific to a single session.
+Definition: every time you deploy LMBench, this is defined as a benchmarking **"session"** and each deployment comes with an `lmbench-session-id`. [lmbench.dev](lmbench.dev) allows you to view the results specific to a single session.
 
 **CONTROL FLOW**: The top level entrypoint is `run-bench.py`. The top level configuration is `run-bench.yaml`
 

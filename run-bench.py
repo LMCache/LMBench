@@ -4,6 +4,7 @@ import yaml
 import os
 import subprocess
 import time
+import uuid
 from pathlib import Path
 from typing import Dict, Any, Union, Optional
 import sys
@@ -18,6 +19,7 @@ CURRENT_SERVING_INDEX = None # Track which serving baseline we're currently runn
 CURRENT_SERVING_CONFIG = None # Track the current serving configuration
 CURRENT_SPEC_CONFIG = None # Track the current spec configuration
 CURRENT_SPEC_FILE_PATH = None # Track the current spec file path
+LMBENCH_SESSION_ID = None # MUST be set in main() - unique identifier for this benchmarking session
 
 def read_run_bench_config() -> Dict[str, Any]:
     """Read and parse the run-bench.yaml file."""
@@ -716,7 +718,7 @@ def sharegpt_run_workload(sharegpt_config: Dict[str, Any]) -> None:
 
     os.chmod(workload_exec_script_path, 0o755)
 
-    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH, LMBENCH_SESSION_ID
 
     # Read the benchmark name from the current spec config
     benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
@@ -735,6 +737,7 @@ def sharegpt_run_workload(sharegpt_config: Dict[str, Any]) -> None:
     cmd.extend([str(benchmark_name)])
     cmd.extend([str(CURRENT_SERVING_INDEX)])
     cmd.extend([str(CURRENT_SPEC_FILE_PATH)]) # Pass the spec file path
+    cmd.extend([str(LMBENCH_SESSION_ID)]) # Pass the session ID
     cmd.extend([str(qps) for qps in qps_values])
 
     # Execute the workload
@@ -766,7 +769,7 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
     if not hasattr(run_synthetic, 'share_gpt_generated'):
         run_synthetic.share_gpt_generated = False
 
-    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH, LMBENCH_SESSION_ID
 
     # Read the benchmark name from the current spec config
     benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
@@ -809,6 +812,7 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
     NAME=${11}
     SERVING_INDEX=${12}
     SPEC_FILE_PATH=${13}
+    LMBENCH_SESSION_ID=${14}
     [qps_values...]
     """
     cmd.extend([str(NUM_USERS_WARMUP)])
@@ -821,6 +825,7 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
     cmd.extend([str(benchmark_name)])
     cmd.extend([str(CURRENT_SERVING_INDEX)])
     cmd.extend([str(CURRENT_SPEC_FILE_PATH)]) # Pass the spec file path
+    cmd.extend([str(LMBENCH_SESSION_ID)]) # Pass the session ID
     cmd.extend([str(qps) for qps in qps_values])
 
     # Execute the workload
@@ -834,7 +839,7 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
 
 def run_mooncake(mooncake_config: Dict[str, Any]) -> None:
     """Run the Mooncake workload with the specified configuration."""
-    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH, LMBENCH_SESSION_ID
 
     # Read the benchmark name from the current spec config
     benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
@@ -862,6 +867,7 @@ def run_mooncake(mooncake_config: Dict[str, Any]) -> None:
     cmd.extend([str(benchmark_name)])
     cmd.extend([str(CURRENT_SERVING_INDEX)])
     cmd.extend([str(CURRENT_SPEC_FILE_PATH)]) # Pass the spec file path
+    cmd.extend([str(LMBENCH_SESSION_ID)]) # Pass the session ID
 
     # Execute the workload
     print(f"Running Mooncake workload with parameters: {' '.join(cmd)}")
@@ -874,7 +880,7 @@ def run_mooncake(mooncake_config: Dict[str, Any]) -> None:
 
 def run_agentic(agentic_config: Dict[str, Any]) -> None:
     """Run the Agentic workload with the specified configuration."""
-    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH, LMBENCH_SESSION_ID
 
     # Read the benchmark name from the current spec config
     benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
@@ -906,6 +912,7 @@ def run_agentic(agentic_config: Dict[str, Any]) -> None:
     cmd.extend([str(benchmark_name)])
     cmd.extend([str(CURRENT_SERVING_INDEX)])
     cmd.extend([str(CURRENT_SPEC_FILE_PATH)]) # Pass the spec file path
+    cmd.extend([str(LMBENCH_SESSION_ID)]) # Pass the session ID
     cmd.extend([str(interval) for interval in NEW_USER_INTERVALS])
 
     # Execute the workload
@@ -919,7 +926,7 @@ def run_agentic(agentic_config: Dict[str, Any]) -> None:
 
 def run_random(random_config: Dict[str, Any]) -> None:
     """Run the Random workload with the specified configuration."""
-    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH, LMBENCH_SESSION_ID
 
     # Read the benchmark name from the current spec config
     benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
@@ -953,6 +960,7 @@ def run_random(random_config: Dict[str, Any]) -> None:
     NAME=$8
     SERVING_INDEX=$9
     SPEC_FILE_PATH=${10}
+    LMBENCH_SESSION_ID=${11}
     [qps_values...]
     """
     cmd.extend([str(NUM_USERS)])
@@ -962,6 +970,7 @@ def run_random(random_config: Dict[str, Any]) -> None:
     cmd.extend([str(benchmark_name)])
     cmd.extend([str(CURRENT_SERVING_INDEX)])
     cmd.extend([str(CURRENT_SPEC_FILE_PATH)]) # Pass the spec file path
+    cmd.extend([str(LMBENCH_SESSION_ID)]) # Pass the session ID
     cmd.extend([str(qps) for qps in qps_values])
 
     # Execute the workload
@@ -975,7 +984,7 @@ def run_random(random_config: Dict[str, Any]) -> None:
 
 def run_vllm_benchmark(vllm_benchmark_config: Dict[str, Any]) -> None:
     """Run the VLLMBenchmark workload with the specified configuration."""
-    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH, LMBENCH_SESSION_ID
 
     # Read the benchmark name from the current spec config
     benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
@@ -1065,6 +1074,7 @@ def run_vllm_benchmark(vllm_benchmark_config: Dict[str, Any]) -> None:
         cmd.extend([str(benchmark_name)])
         cmd.extend([str(CURRENT_SERVING_INDEX)])
         cmd.extend([str(CURRENT_SPEC_FILE_PATH)]) # Pass the spec file path
+        cmd.extend([str(LMBENCH_SESSION_ID)]) # Pass the session ID
         cmd.extend([str(request_rate)])
         cmd.extend(additional_args)
 
@@ -1190,6 +1200,13 @@ def run_multiple_specs(run_bench_config: Dict[str, Any], args) -> None:
 
 # High-Level Benchmarking Pipeline
 def main() -> None:
+    # Generate unique session ID for this benchmarking session
+    timestamp = int(time.time())
+    session_uuid = str(uuid.uuid4())[:8]  # Use first 8 characters of UUID for brevity
+    global LMBENCH_SESSION_ID
+    LMBENCH_SESSION_ID = f"lmbench-{timestamp}-{session_uuid}"
+    print(f"LMBench Session ID: {LMBENCH_SESSION_ID}")
+
     args = parse_args()
     global GLOBAL_ARGS
     GLOBAL_ARGS = args

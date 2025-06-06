@@ -71,6 +71,14 @@ async def async_request_tgi(
             "inputs": request_func_input.prompt,
             "parameters": params,
         }
+
+        # Extract user_id from extra_body and prepare headers
+        headers = {}
+        if request_func_input.extra_body:
+            user_id = request_func_input.extra_body.get("user_id")
+            if user_id is not None:
+                headers["x-user-id"] = str(user_id)
+
         output = RequestFuncOutput()
         output.prompt_len = request_func_input.prompt_len
         if request_func_input.ignore_eos:
@@ -82,7 +90,7 @@ async def async_request_tgi(
         st = time.perf_counter()
         most_recent_timestamp = st
         try:
-            async with session.post(url=api_url, json=payload) as response:
+            async with session.post(url=api_url, json=payload, headers=headers) as response:
                 if response.status == 200:
                     async for chunk_bytes in response.content:
                         chunk_bytes = chunk_bytes.strip()
@@ -145,6 +153,14 @@ async def async_request_trt_llm(
         }
         if request_func_input.ignore_eos:
             payload["min_length"] = request_func_input.output_len
+
+        # Extract user_id from extra_body before adding other extra_body content
+        headers = {}
+        if request_func_input.extra_body:
+            user_id = request_func_input.extra_body.get("user_id")
+            if user_id is not None:
+                headers["x-user-id"] = str(user_id)
+
         output = RequestFuncOutput()
         output.prompt_len = request_func_input.prompt_len
 
@@ -152,7 +168,7 @@ async def async_request_trt_llm(
         st = time.perf_counter()
         most_recent_timestamp = st
         try:
-            async with session.post(url=api_url, json=payload) as response:
+            async with session.post(url=api_url, json=payload, headers=headers) as response:
                 if response.status == 200:
                     async for chunk_bytes in response.content:
                         chunk_bytes = chunk_bytes.strip()
@@ -211,6 +227,13 @@ async def async_request_deepspeed_mii(
             "top_p": 1.0,
         }
         headers = {"Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}"}
+
+        # Extract user_id from extra_body before adding other extra_body content
+        user_id = None
+        if request_func_input.extra_body:
+            extra_body_copy = request_func_input.extra_body.copy()
+            user_id = extra_body_copy.pop("user_id", None)
+            payload.update(extra_body_copy)
 
         output = RequestFuncOutput()
         output.prompt_len = request_func_input.prompt_len
@@ -280,9 +303,17 @@ async def async_request_openai_completions(
         }
         if request_func_input.ignore_eos:
             payload["ignore_eos"] = request_func_input.ignore_eos
+
+        # Extract user_id from extra_body before adding other extra_body content
+        user_id = None
         if request_func_input.extra_body:
-            payload.update(request_func_input.extra_body)
+            extra_body_copy = request_func_input.extra_body.copy()
+            user_id = extra_body_copy.pop("user_id", None)
+            payload.update(extra_body_copy)
+
         headers = {"Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}"}
+        if user_id is not None:
+            headers["x-user-id"] = str(user_id)
 
         output = RequestFuncOutput()
         output.prompt_len = request_func_input.prompt_len
@@ -381,12 +412,20 @@ async def async_request_openai_chat_completions(
         }
         if request_func_input.ignore_eos:
             payload["ignore_eos"] = request_func_input.ignore_eos
+
+        # Extract user_id from extra_body before adding other extra_body content
+        user_id = None
         if request_func_input.extra_body:
-            payload.update(request_func_input.extra_body)
+            extra_body_copy = request_func_input.extra_body.copy()
+            user_id = extra_body_copy.pop("user_id", None)
+            payload.update(extra_body_copy)
+
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
         }
+        if user_id is not None:
+            headers["x-user-id"] = str(user_id)
 
         output = RequestFuncOutput()
         output.prompt_len = request_func_input.prompt_len
@@ -472,11 +511,19 @@ async def async_request_openai_audio(
             "stream_include_usage": True,
             "stream_continuous_usage_stats": True,
         }
+
+        # Extract user_id from extra_body before adding other extra_body content
+        user_id = None
         if request_func_input.extra_body:
-            payload.update(request_func_input.extra_body)
+            extra_body_copy = request_func_input.extra_body.copy()
+            user_id = extra_body_copy.pop("user_id", None)
+            payload.update(extra_body_copy)
+
         headers = {
             "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
         }
+        if user_id is not None:
+            headers["x-user-id"] = str(user_id)
 
         # Send audio file
         def to_bytes(y, sr):

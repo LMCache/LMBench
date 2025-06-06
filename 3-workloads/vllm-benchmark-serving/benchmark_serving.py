@@ -290,6 +290,7 @@ async def benchmark(
     max_concurrency: Optional[int],
     lora_modules: Optional[Iterable[str]],
     extra_body: Optional[dict],
+    request_with_user_id: bool = True,
 ):
     if backend in ASYNC_REQUEST_FUNCS:
         request_func = ASYNC_REQUEST_FUNCS[backend]
@@ -356,6 +357,7 @@ async def benchmark(
     print(f"Traffic request rate: {request_rate}")
     print(f"Burstiness factor: {burstiness} ({distribution})")
     print(f"Maximum request concurrency: {max_concurrency}")
+    print(f"Request with user ID: {request_with_user_id}")
 
     pbar = None if disable_tqdm else tqdm(total=len(input_requests))
 
@@ -373,6 +375,7 @@ async def benchmark(
 
     benchmark_start_time = time.perf_counter()
     tasks: list[asyncio.Task] = []
+    request_id = 0
     async for request in get_request(input_requests, request_rate, burstiness):
         prompt, prompt_len, output_len, mm_content = (
             request.prompt,
@@ -385,6 +388,11 @@ async def benchmark(
             req_lora_module = next(lora_modules)
             req_model_id, req_model_name = req_lora_module, req_lora_module
 
+        # Prepare extra_body with user ID if enabled
+        request_extra_body = extra_body.copy() if extra_body else {}
+        if request_with_user_id:
+            request_extra_body["user_id"] = request_id
+
         request_func_input = RequestFuncInput(
             model=req_model_id,
             model_name=req_model_name,
@@ -395,13 +403,14 @@ async def benchmark(
             logprobs=logprobs,
             multi_modal_content=mm_content,
             ignore_eos=ignore_eos,
-            extra_body=extra_body,
+            extra_body=request_extra_body,
         )
         tasks.append(
             asyncio.create_task(
                 limited_request_func(request_func_input=request_func_input, pbar=pbar)
             )
         )
+        request_id += 1
     outputs: list[RequestFuncOutput] = await asyncio.gather(*tasks)
 
     if profile:
@@ -802,6 +811,7 @@ def main(args: argparse.Namespace):
             max_concurrency=args.max_concurrency,
             lora_modules=args.lora_modules,
             extra_body=sampling_params,
+            request_with_user_id=args.request_with_user_id,
         )
     )
 
@@ -1223,6 +1233,12 @@ if __name__ == "__main__":
         help="A subset of LoRA module names passed in when "
         "launching the server. For each request, the "
         "script chooses a LoRA module at random.",
+    )
+
+    parser.add_argument(
+        "--request-with-user-id",
+        action="store_true",
+        help="Include user ID in the request loop",
     )
 
     args = parser.parse_args()
