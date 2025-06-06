@@ -1,4 +1,4 @@
-Name: benchmark-serving-workloads
+Name: vllm-benchmark-serving-workloads
 
 # Suggested Infrastructure (in run-bench.yaml)
 # 1-infrastructure:
@@ -9,11 +9,18 @@ Name: benchmark-serving-workloads
 #   Location: LocalMinikube
 
 Serving:
+  # - Helm-ProductionStack:
+  #     helmConfigSelection: basic/llama-3.1-8b-basic.yaml
+  #     hf_token: <YOUR_HF_TOKEN>
+  #     modelURL: meta-llama/Llama-3.1-8B-Instruct
   - Helm-ProductionStack:
-      helmConfigSelection: basic/llama-3.1-8b-basic.yaml
+      helmConfigSelection: routing/4-roundrobin.yaml
       hf_token: <YOUR_HF_TOKEN>
       modelURL: meta-llama/Llama-3.1-8B-Instruct
-
+  - Helm-ProductionStack:
+      helmConfigSelection: routing/4-session.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
 Workload:
   # VLLMBenchmark workload configurations for comprehensive vLLM serving benchmarks
   # This focuses on the most important benchmark scenarios for vLLM serving performance
@@ -26,7 +33,7 @@ Workload:
       DATASET_NAME: random
       DATASET_PATH: ""  # Empty for synthetic generation
       NUM_PROMPTS: 100
-      REQUEST_RATES: [1.0]
+      REQUEST_RATES: [0.5, 1.0, 2.0]
       TEMPERATURE: 0.7
       MAX_TOKENS: 128
       SEED: 42
@@ -40,7 +47,7 @@ Workload:
       DATASET_NAME: sonnet
       DATASET_PATH: "3-workloads/vllm-benchmark-serving/sonnet.txt"
       NUM_PROMPTS: 100
-      REQUEST_RATES: [1.0]
+      REQUEST_RATES: [0.5, 1.0, 2.0]
       TEMPERATURE: 0.0
       MAX_TOKENS: 150
       SEED: 42
@@ -54,7 +61,7 @@ Workload:
       DATASET_NAME: hf
       DATASET_PATH: "philschmid/mt-bench"  # Verified working HF dataset
       NUM_PROMPTS: 100
-      REQUEST_RATES: [0.5]
+      REQUEST_RATES: [0.5, 1.0, 2.0]
       TEMPERATURE: 0.0
       MAX_TOKENS: 200
       SEED: 42
@@ -64,7 +71,7 @@ Workload:
       DATASET_NAME: random
       DATASET_PATH: ""
       NUM_PROMPTS: 100
-      REQUEST_RATES: [10.0]  # High QPS test
+      REQUEST_RATES: [8.0, 9.0, 10.0]  # High QPS test
       TEMPERATURE: 0.0
       MAX_TOKENS: 64  # Shorter responses for high throughput
       SEED: 42
