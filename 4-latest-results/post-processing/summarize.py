@@ -167,23 +167,27 @@ def process_output(filename: str, **kwargs):
             # Extract metrics from the VLLMBenchmark output
             results = {
                 "successful_requests": int(float(metrics_dict.get('completed', 0))),
-                "failed_requests": 0,  # VLLMBenchmark doesn't track failed requests separately
-                "total_requests": int(float(metrics_dict.get('completed', 0))),
-                "duration": float(metrics_dict.get('duration', 0)),
-                "request_throughput": float(metrics_dict.get('request_throughput', 0)),
+                "benchmark_duration_s": float(metrics_dict.get('duration', 0)),
                 "total_input_tokens": int(float(metrics_dict.get('total_input_tokens', 0))),
-                "total_output_tokens": int(float(metrics_dict.get('total_output_tokens', 0))),
-                "output_token_throughput": float(metrics_dict.get('output_throughput', 0)),
-                "total_token_throughput": float(metrics_dict.get('total_token_throughput', 0)),
-                "mean_ttft_ms": float(metrics_dict.get('mean_ttft_ms', 0)),
-                "median_ttft_ms": float(metrics_dict.get('median_ttft_ms', 0)),
-                "p99_ttft_ms": float(metrics_dict.get('p99_ttft_ms', 0)),
-                "mean_tpot_ms": float(metrics_dict.get('mean_tpot_ms', 0)),
-                "median_tpot_ms": float(metrics_dict.get('median_tpot_ms', 0)),
-                "p99_tpot_ms": float(metrics_dict.get('p99_tpot_ms', 0)),
-                "mean_itl_ms": float(metrics_dict.get('mean_itl_ms', 0)),
-                "median_itl_ms": float(metrics_dict.get('median_itl_ms', 0)),
-                "p99_itl_ms": float(metrics_dict.get('p99_itl_ms', 0))
+                "total_generated_tokens": int(float(metrics_dict.get('total_output_tokens', 0))),
+                "request_throughput_req_per_s": float(metrics_dict.get('request_throughput', 0)),
+                "output_token_throughput_tok_per_s": float(metrics_dict.get('output_throughput', 0)),
+                "total_token_throughput_tok_per_s": float(metrics_dict.get('total_token_throughput', 0)),
+                "ttft_ms": {
+                    "mean": round(float(metrics_dict.get('mean_ttft_ms', 0)), 2),
+                    "median": round(float(metrics_dict.get('median_ttft_ms', 0)), 2),
+                    "p99": round(float(metrics_dict.get('p99_ttft_ms', 0)), 2)
+                },
+                "tpot_ms": {
+                    "mean": round(float(metrics_dict.get('mean_tpot_ms', 0)), 2),
+                    "median": round(float(metrics_dict.get('median_tpot_ms', 0)), 2),
+                    "p99": round(float(metrics_dict.get('p99_tpot_ms', 0)), 2)
+                },
+                "itl_ms": {
+                    "mean": round(float(metrics_dict.get('mean_itl_ms', 0)), 2),
+                    "median": round(float(metrics_dict.get('median_itl_ms', 0)), 2),
+                    "p99": round(float(metrics_dict.get('p99_itl_ms', 0)), 2)
+                }
             }
 
             # Use REQUEST_RATE as QPS for VLLMBenchmark workloads
