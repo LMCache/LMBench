@@ -108,6 +108,9 @@ class Response:
 class RequestExecutor:
 
     def __init__(self, base_url: str, model: str):
+        # Ensure base_url ends with /v1 for vLLM
+        if not base_url.endswith('/v1'):
+            base_url = base_url.rstrip('/') + '/v1'
         self.base_url = base_url
         self.model = model
         self.loop = AsyncLoopWrapper.GetOrStartLoop()
