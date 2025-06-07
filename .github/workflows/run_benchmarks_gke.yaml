@@ -4,15 +4,31 @@ on:
   workflow_call:
     inputs:
       config_file:
-        description: 'Path to the config file to use for run-bench.yaml'
+        description: 'Path to the config file to use'
         required: false
         type: string
-        default: ''
+        default: 'run-bench.yaml'
+      auto_upload:
+        description: 'Enable automatic upload to dashboard API'
+        required: false
+        type: boolean
+        default: false
     secrets:
       HF_TOKEN:
         description: 'Hugging Face token for model access'
         required: true
   workflow_dispatch:
+    inputs:
+      config_file:
+        description: 'Path to the config file to use'
+        required: false
+        type: string
+        default: 'run-bench.yaml'
+      auto_upload:
+        description: 'Enable automatic upload to dashboard API'
+        required: false
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -123,8 +139,13 @@ jobs:
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate py312
-          echo "✅ Running benchmark script..."
-          python run-bench.py
+          if [ "${{ inputs.auto_upload }}" = "true" ]; then
+            echo "✅ Running benchmark script with auto-upload enabled..."
+            python run-bench.py --auto-upload
+          else
+            echo "✅ Running benchmark script..."
+            python run-bench.py
+          fi
 
       - name: Compress benchmark result directories
         run: |

@@ -47,3 +47,4 @@ jobs:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
     with:
       config_file: ${{ matrix.config_file }}
+      auto_upload: true

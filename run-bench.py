@@ -1139,6 +1139,8 @@ def parse_args():
     parser.add_argument("--key", type=str, help="Inject a key if starting from stage 3")
     parser.add_argument("--ignore-data-generation", action="store_true", help="Ignore data generation and use existing data in 4-latest-results/sharegpt-data.json")
     parser.add_argument("--skip-node-affinity", action="store_true", help="Skip node pool affinity assignments )")
+    parser.add_argument("--auto-upload", action="store_true", help="Automatically upload benchmark results to API dashboard")
+    parser.add_argument("--api-url", type=str, default="http://localhost:3001/upload", help="API endpoint URL for uploading results (default: http://localhost:3001/upload)")
     return parser.parse_args()
 
 def run_multiple_specs(run_bench_config: Dict[str, Any], args) -> None:
@@ -1237,6 +1239,14 @@ def main() -> None:
         KEY = args.key
     if args.ignore_data_generation:
         print("Ignoring data generation!")
+
+    # Set environment variables for auto-upload functionality
+    if args.auto_upload:
+        print(f"🚀 Auto-upload enabled: {args.api_url}")
+        os.environ['LMBENCH_AUTO_UPLOAD'] = 'true'
+        os.environ['LMBENCH_API_URL'] = args.api_url
+    else:
+        os.environ['LMBENCH_AUTO_UPLOAD'] = 'false'
 
     try:
         # Read the run-bench configuration

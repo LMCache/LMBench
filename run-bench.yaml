@@ -7,7 +7,7 @@
 
 1-infrastructure:
   # Location: LocalMinikube
-  # # Location: NoBench
-  Location: LMCacheGKE
-  numClusterGPUs: 4
-  A100_VRAM: 40
+  Location: NoBench
+  # Location: LMCacheGKE
+  # numClusterGPUs: 4
+  # A100_VRAM: 40

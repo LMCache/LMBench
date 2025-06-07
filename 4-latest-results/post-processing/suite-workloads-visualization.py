@@ -58,9 +58,18 @@ def extract_key_from_filename(filename):
         # Handle cases where baseline_key might contain underscores
         # We'll take everything before the workload type
         workload_types = ['synthetic', 'sharegpt', 'agentic', 'mooncake', 'random']
+
+        # Check for exact workload type matches first
         for i, part in enumerate(parts):
             if part in workload_types:
                 return '_'.join(parts[:i])
+
+        # Check for vllm workload patterns (vllm_dataset or vllm_dataset_path)
+        for i, part in enumerate(parts):
+            if part == 'vllm' and i + 1 < len(parts):
+                # This is a vllm workload, return everything before 'vllm'
+                return '_'.join(parts[:i])
+
         # Fallback: assume first part is the key
         return parts[0]
     return 'unknown'

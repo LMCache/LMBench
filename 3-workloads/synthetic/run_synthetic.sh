@@ -105,7 +105,9 @@ for qps in "${QPS_VALUES[@]}"; do
         USE_SHAREGPT="$USE_SHAREGPT" \
         SERVING_INDEX="$SERVING_INDEX" \
         SPEC_FILE_PATH="$SPEC_FILE_PATH" \
-        LMBENCH_SESSION_ID="$LMBENCH_SESSION_ID"
+        LMBENCH_SESSION_ID="$LMBENCH_SESSION_ID" \
+        AUTO_UPLOAD="${LMBENCH_AUTO_UPLOAD:-false}" \
+        API_URL="${LMBENCH_API_URL:-http://localhost:3001/upload}"
 
     # Change back to script directory
     cd "$SCRIPT_DIR"

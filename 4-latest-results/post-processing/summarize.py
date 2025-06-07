@@ -9,6 +9,14 @@ import numpy as np
 import yaml
 import json
 
+# Import upload functionality
+try:
+    from upload_to_api import upload_json_file
+    UPLOAD_AVAILABLE = True
+except ImportError:
+    UPLOAD_AVAILABLE = False
+    print("Warning: upload_to_api module not available. Auto-upload disabled.")
+
 def ProcessSummary(
     df: pd.DataFrame,
     start_time: Optional[float] = None,
@@ -278,6 +286,19 @@ def process_output(filename: str, **kwargs):
         with open(json_path, "r") as src, open(runner_db_file, "w") as dst:
             dst.write(src.read())
         print(f"Results saved to ~/srv/runner-db/{json_filename}")
+
+        # Auto-upload to API if enabled and available
+        auto_upload = kwargs.get('AUTO_UPLOAD', False)
+        if auto_upload and UPLOAD_AVAILABLE:
+            api_url = kwargs.get('API_URL', 'http://localhost:3001/upload')
+            print(f"🚀 Auto-uploading to API: {api_url}")
+            upload_success = upload_json_file(json_path, api_url)
+            if upload_success:
+                print(f"✅ Successfully uploaded {json_filename} to dashboard")
+            else:
+                print(f"❌ Failed to upload {json_filename} to dashboard")
+        elif auto_upload and not UPLOAD_AVAILABLE:
+            print("⚠️  Auto-upload requested but upload module not available")
 
     except Exception as e:
         print(f"ERROR: Failed to process benchmark results: {str(e)}")
