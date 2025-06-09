@@ -41,7 +41,8 @@ run_mooncake() {
         --output "$2" \
         --log-interval 30 \
         --time 100 \
-        --slowdown-factor 1
+        --slowdown-factor 1 \
+        --request-with-user-id
 
     sleep 10
 }

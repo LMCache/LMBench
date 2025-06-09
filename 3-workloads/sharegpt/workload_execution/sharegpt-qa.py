@@ -175,8 +175,11 @@ class BenchmarkRunner:
             prompt = str(self.qps) + " " + entry["input"] # To avoid cache hit cross run
             max_tokens = entry.get("output_length", 1)
 
-            # Add user_id if enabled
-            user_id = self._next_idx if self.request_with_user_id else None
+            # Use conversation_id as user_id if available, otherwise fall back to request index
+            if self.request_with_user_id:
+                user_id = entry.get("conversation_id", self._next_idx)
+            else:
+                user_id = None
             self.executor.launch_request(prompt, max_tokens, self._on_finish, user_id)
 
             self._next_idx += 1

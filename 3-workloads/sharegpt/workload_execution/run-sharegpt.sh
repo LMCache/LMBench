@@ -41,7 +41,8 @@ warm_up() {
         --base-url "$BASE_URL" \
         --output /tmp/warmup.csv \
         --log-interval 30 \
-        --sharegpt-file "../warmup.json"
+        --sharegpt-file "../warmup.json" \
+        --request-with-user-id
 
     sleep 10
 }
@@ -57,7 +58,8 @@ run_benchmark() {
         --base-url "$BASE_URL" \
         --output "$2" \
         --log-interval 30 \
-        --sharegpt-file "../run.json"
+        --sharegpt-file "../run.json" \
+        --request-with-user-id
 
     sleep 10
 }

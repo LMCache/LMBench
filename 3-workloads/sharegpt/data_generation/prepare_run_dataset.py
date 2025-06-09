@@ -40,19 +40,33 @@ for entry in filtered_data:
     if round_count > max_round:
         max_round = round_count
 
-# Build a new list to store round-robin results.
+# Build a new list to store conversation-based results.
 new_data = []
 
-# Loop over rounds starting from the specified start_round up to the maximum round.
-for round_num in range(args.start_round, max_round + 1):
-    for entry in filtered_data:
-        input_field = f"input{round_num}"
-        output_field = f"output_length{round_num}"
+# Instead of round-robin, group by conversation to preserve session structure
+conversation_id = 0
+for entry in filtered_data:
+    # Count how many rounds this conversation has
+    round_count = sum(
+        1 for key in entry
+        if key == "input" or (key.startswith("input") and key[5:].isdigit())
+    )
+
+    # Create requests for each round of this conversation, starting from start_round
+    for round_num in range(max(1, args.start_round), min(round_count + 1, args.min_rounds + 1)):
+        input_field = "input" if round_num == 1 else f"input{round_num}"
+        output_field = "output_length" if round_num == 1 else f"output_length{round_num}"
+
         if input_field in entry:
-            new_entry = {"input": entry[input_field]}
-            # Include output_length if present; if not, default to 20.
-            new_entry["output_length"] = entry.get(output_field, 20)
+            new_entry = {
+                "input": entry[input_field],
+                "output_length": entry.get(output_field, 20),
+                "conversation_id": conversation_id,  # Same ID for all rounds in this conversation
+                "round_num": round_num
+            }
             new_data.append(new_entry)
+
+    conversation_id += 1
 
 # Write the new JSON list to the fixed output file.
 with open('run.json', 'w') as f:

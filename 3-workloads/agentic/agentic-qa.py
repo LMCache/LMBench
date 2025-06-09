@@ -318,7 +318,7 @@ class UserSession:
     def _build_new_question(self):
         self.question_id += 1
         return (
-            f"Here's question #{self.question_id}: can you tell me "
+            f"Here's question #{self.question_id} from user {self.user_config.user_id}: can you tell me "
             + "a new long story with a happy ending?"
         )
 

@@ -292,15 +292,14 @@ class UserSession:
         dummy_text_user = gen_dummy_text(self.user_config.user_info_len)
         system_prompt = (
             f"Hi, here's some system prompt: {dummy_text_sys}."
-            + f"For user {self.user_config.user_id}, "
-            + f"here are some other context: {dummy_text_user}."
+            + f"Here are some other context: {dummy_text_user}."
         )
         return system_prompt
 
     def _build_new_question(self):
         self.question_id += 1
         return (
-            f"Here's question #{self.question_id}: can you tell me "
+            f"Here's question #{self.question_id} from user {self.user_config.user_id}: can you tell me "
             + "a new long story with a happy ending?"
         )
 

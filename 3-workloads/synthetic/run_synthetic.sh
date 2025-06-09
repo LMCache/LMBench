@@ -52,7 +52,8 @@ warmup() {
         --init-user-id "$INIT_USER_ID" \
         --output /tmp/warmup.csv \
         --log-interval 30 \
-        --time $((NUM_USERS_WARMUP / 2))
+        --time $((NUM_USERS_WARMUP / 2)) \
+        --request-with-user-id
 }
 
 run_benchmark() {
@@ -75,7 +76,8 @@ run_benchmark() {
         --base-url "$BASE_URL" \
         --init-user-id "$INIT_USER_ID" \
         --output "$output_file" \
-        --time 100
+        --time 100 \
+        --request-with-user-id
 
     sleep 10
 

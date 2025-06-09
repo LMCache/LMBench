@@ -10,6 +10,10 @@ Name: daily-4-A100-benchmarking
 
 Serving:
   - Helm-ProductionStack:
+      helmConfigSelection: routing/4-no-lmcache.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+  - Helm-ProductionStack:
       helmConfigSelection: routing/4-roundrobin.yaml
       hf_token: <YOUR_HF_TOKEN>
       modelURL: meta-llama/Llama-3.1-8B-Instruct

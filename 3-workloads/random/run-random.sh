@@ -50,7 +50,8 @@ run_benchmark() {
         --base-url "$BASE_URL" \
         --init-user-id "$INIT_USER_ID" \
         --output "$output_file" \
-        --time 100
+        --time 100 \
+        --request-with-user-id
 
     sleep 10
 
