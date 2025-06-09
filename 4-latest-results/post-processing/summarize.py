@@ -64,7 +64,9 @@ def ProcessSummary(
         p99_ttft = np.percentile(ttft_ms, 99)
 
         # Time per Output Token calculation (excluding first token)
-        df['tpot'] = ((df['generation_time'] - df['ttft']) / (df['generation_tokens'] - 1)) * 1000
+        # Note: generation_time in our workload generator is already the time from first token to completion
+        # So we don't need to subtract ttft again
+        df['tpot'] = (df['generation_time'] / (df['generation_tokens'] - 1)) * 1000
         tpot = df['tpot'].replace([float('inf'), -float('inf'), np.nan], np.nan).dropna()
         mean_tpot = tpot.mean()
         median_tpot = tpot.median()
@@ -277,15 +279,6 @@ def process_output(filename: str, **kwargs):
             json.dump(output_data, f, indent=2)
 
         print(f"Performance summary saved to {json_path}")
-
-        # Save a copy to ~/srv/runner-db/
-        runner_db_path = os.path.expanduser("~/srv/runner-db/")
-        os.makedirs(runner_db_path, exist_ok=True)
-        runner_db_file = os.path.join(runner_db_path, json_filename)
-
-        with open(json_path, "r") as src, open(runner_db_file, "w") as dst:
-            dst.write(src.read())
-        print(f"Results saved to ~/srv/runner-db/{json_filename}")
 
         # Auto-upload to API if enabled and available
         auto_upload = kwargs.get('AUTO_UPLOAD', False)
