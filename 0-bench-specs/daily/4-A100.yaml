@@ -25,16 +25,16 @@ Serving:
 Workload:
   ShareGPT:
     # High memory pressure ShareGPT workload to trigger LMCache KV offloading:
-    - LIMIT: 5000
+    - LIMIT: 1000
       MIN_ROUNDS: 10
       START_ROUND: 0
       QPS: [2, 4, 6, 8]
 
   LMCacheSynthetic:
     # High memory pressure workload to trigger LMCache KV offloading:
-    - NUM_USERS_WARMUP: 150
-      NUM_USERS: 120
-      NUM_ROUNDS: 20
+    - NUM_USERS_WARMUP: 60
+      NUM_USERS: 60
+      NUM_ROUNDS: 15
       SYSTEM_PROMPT: 1000
       CHAT_HISTORY: 20000
       ANSWER_LEN: 100
