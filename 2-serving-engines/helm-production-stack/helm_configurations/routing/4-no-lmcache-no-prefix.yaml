@@ -13,7 +13,7 @@ servingEngineSpec:
     pvcAccessMode:
       - ReadWriteOnce
     vllmConfig:
-      enablePrefixCaching: true
+      enablePrefixCaching: false
       maxModelLen: 16384
       v1: 1
     lmcacheConfig:

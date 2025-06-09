@@ -1,4 +1,4 @@
-Name: layerwise-multi-benchmark
+Name: layerwise-store-retrieve
 
 # Suggested Infrastructure (in run-bench.yaml)
 # 1-infrastructure:

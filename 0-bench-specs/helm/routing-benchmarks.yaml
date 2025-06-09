@@ -10,6 +10,14 @@ Name: helm-routing-benchmarks
 
 Serving:
   - Helm-ProductionStack:
+      helmConfigSelection: routing/4-no-lmcache-no-prefix.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+  - Helm-ProductionStack:
+      helmConfigSelection: routing/4-no-lmcache.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+  - Helm-ProductionStack:
       helmConfigSelection: routing/4-roundrobin.yaml
       hf_token: <YOUR_HF_TOKEN>
       modelURL: meta-llama/Llama-3.1-8B-Instruct
@@ -33,7 +41,7 @@ Workload:
       NUM_USERS: 25
       NUM_ROUNDS: 20
       SYSTEM_PROMPT: 1000
-      CHAT_HISTORY: 20000
+      CHAT_HISTORY: 12000
       ANSWER_LEN: 100
-      QPS: [4, 5, 6, 8]
+      QPS: [1, 2, 3, 4, 5, 6, 7, 8]
       USE_SHAREGPT: false
