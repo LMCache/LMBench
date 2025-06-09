@@ -37,8 +37,8 @@ Serving:
 Workload:
   LMCacheSynthetic:
     # long input short output:
-    - NUM_USERS_WARMUP: 20
-      NUM_USERS: 25
+    - NUM_USERS_WARMUP: 100
+      NUM_USERS: 100
       NUM_ROUNDS: 20
       SYSTEM_PROMPT: 1000
       CHAT_HISTORY: 12000
