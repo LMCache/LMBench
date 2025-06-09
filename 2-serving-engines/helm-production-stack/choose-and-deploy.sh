@@ -110,32 +110,74 @@ echo "Installing vLLM stack..."
 # release name is vllm
 helm install vllm vllm/vllm-stack -f "$PROCESSED_CONFIG_FILE"
 
-# IMMEDIATE AUTOMATED FIX FOR VLLM ENTRYPOINT ISSUE
-echo "🔧 Applying immediate vLLM entrypoint fixes for lmcache/vllm-openai images..."
+# IMMEDIATELY patch deployment strategy to avoid creating excess pods
+echo "🔧 Patching deployment strategy to avoid creating excess pods..."
 sleep 3  # Give helm a moment to create resources
 
-# Retry loop to ensure we catch the deployments
-for i in {1..10}; do
+# Wait for deployments to be created with proper timeout (60 seconds should be enough)
+DEPLOYMENT_TIMEOUT=60
+START_TIME=$(date +%s)
+echo "⏳ Waiting for vLLM deployments to be created..."
+while true; do
+  CURRENT_TIME=$(date +%s)
+  ELAPSED_TIME=$((CURRENT_TIME - START_TIME))
+
+  if [ $ELAPSED_TIME -gt $DEPLOYMENT_TIMEOUT ]; then
+    echo "❌ Timeout: vLLM deployments not found after ${DEPLOYMENT_TIMEOUT}s"
+    echo "Available deployments:"
+    kubectl get deployments 2>/dev/null || echo "No deployments found"
+    exit 1
+  fi
+
   VLLM_DEPLOYMENTS=$(kubectl get deployments 2>/dev/null | grep "deployment-vllm" | grep -v "router" | awk '{print $1}' || true)
   if [ -n "$VLLM_DEPLOYMENTS" ]; then
-    echo "🔧 Found vLLM deployments, checking for lmcache/vllm-openai images..."
+    echo "✅ Found vLLM deployments after ${ELAPSED_TIME}s"
     echo "$VLLM_DEPLOYMENTS" | while read deploy; do
-      IMAGE=$(kubectl get deployment $deploy -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
-      if [[ $IMAGE == *"lmcache/vllm-openai"* ]]; then
-        echo "🔧 FIXING: $deploy uses $IMAGE - applying entrypoint fix..."
-        kubectl patch deployment $deploy --type='json' \
-          -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/command/0", "value": "/opt/venv/bin/vllm"}]' 2>/dev/null || true
-        echo "✅ FIXED: $deploy patched to use /opt/venv/bin/vllm"
-      else
-        echo "ℹ️  $deploy uses $IMAGE - no fix needed"
-      fi
+      kubectl patch deployment $deploy \
+          -p '{"spec": {"strategy": {"rollingUpdate": {"maxSurge": 0, "maxUnavailable": 1}}}}'
+      echo "✅ $deploy patched with maxSurge=0 strategy"
     done
     break
   else
-    echo "⏳ Waiting for deployments to be created... (attempt $i/10)"
+    echo "⏳ Still waiting for deployments... (${ELAPSED_TIME}s elapsed)"
     sleep 2
   fi
 done
+
+# IMMEDIATE AUTOMATED FIX FOR VLLM ENTRYPOINT ISSUE
+echo "🔧 Applying immediate vLLM entrypoint fixes for lmcache/vllm-openai images..."
+
+# The deployments should already exist from above, but add a small safety check
+if [ -z "$VLLM_DEPLOYMENTS" ]; then
+  VLLM_DEPLOYMENTS=$(kubectl get deployments 2>/dev/null | grep "deployment-vllm" | grep -v "router" | awk '{print $1}' || true)
+fi
+
+if [ -n "$VLLM_DEPLOYMENTS" ]; then
+  echo "🔧 Found vLLM deployments, checking for lmcache/vllm-openai images..."
+  echo "$VLLM_DEPLOYMENTS" | while read deploy; do
+    IMAGE=$(kubectl get deployment $deploy -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+    if [[ $IMAGE == *"lmcache/vllm-openai"* ]]; then
+      echo "🔧 FIXING: $deploy uses $IMAGE - applying entrypoint fix..."
+      kubectl patch deployment $deploy --type='json' \
+        -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/command/0", "value": "/opt/venv/bin/vllm"}]' 2>/dev/null || true
+      echo "✅ FIXED: $deploy patched to use /opt/venv/bin/vllm"
+
+      # Clean up old ReplicaSets to avoid multiple ReplicaSets for the same deployment
+      echo "🔧 Cleaning up old ReplicaSets for $deploy..."
+      OLD_REPLICASETS=$(kubectl get replicaset -l app=$deploy 2>/dev/null | awk 'NR>1 && $2==0 {print $1}' || true)
+      if [ -n "$OLD_REPLICASETS" ]; then
+        echo "$OLD_REPLICASETS" | while read rs; do
+          echo "🔧 Deleting old ReplicaSet: $rs"
+          kubectl delete replicaset $rs 2>/dev/null || true
+        done
+      fi
+    else
+      echo "ℹ️  $deploy uses $IMAGE - no fix needed"
+    fi
+  done
+else
+  echo "⚠️ No vLLM deployments found for entrypoint fixes"
+fi
 
 # Skip node affinity assignments if requested
 if [ "$SKIP_NODE_AFFINITY" = true ]; then
@@ -231,6 +273,17 @@ else
                   kubectl patch $deploy \
                       -p '{"spec": {"template": {"spec": {"nodeSelector": {"pool": "gpu-pool"}}}}}'
                   echo "✅ $(echo $deploy | sed 's|deployment.apps/||') assigned to gpu-pool"
+
+                  # Clean up old ReplicaSets after node assignment patch
+                  DEPLOYMENT_NAME=$(echo $deploy | sed 's|deployment.apps/||')
+                  echo "🔧 Cleaning up old ReplicaSets for $DEPLOYMENT_NAME after node assignment..."
+                  OLD_REPLICASETS=$(kubectl get replicaset -l app=$DEPLOYMENT_NAME 2>/dev/null | awk 'NR>1 && $2==0 {print $1}' || true)
+                  if [ -n "$OLD_REPLICASETS" ]; then
+                    echo "$OLD_REPLICASETS" | while read rs; do
+                      echo "🔧 Deleting old ReplicaSet: $rs"
+                      kubectl delete replicaset $rs 2>/dev/null || true
+                    done
+                  fi
               fi
           done
       else
@@ -238,17 +291,6 @@ else
       fi
   else
       echo "⚠️ Error getting deployments list"
-  fi
-
-  # Also patch the deployment strategy to reduce max surge to 0 (create new pods only after old ones are terminated)
-  echo "Patching deployment strategy to avoid creating excess pods..."
-  VLLM_DEPLOYMENTS=$(kubectl get deployments | grep "deployment-vllm" | grep -v "router" | awk '{print $1}' | sed 's/^/deployment.apps\//' 2>/dev/null)
-  if [ -n "$VLLM_DEPLOYMENTS" ]; then
-      echo "$VLLM_DEPLOYMENTS" | while read deploy; do
-          kubectl patch $deploy \
-              -p '{"spec": {"strategy": {"rollingUpdate": {"maxSurge": 0, "maxUnavailable": 1}}}}'
-      done
-      echo "✅ Patched deployment strategy to reduce max surge"
   fi
 
 fi
