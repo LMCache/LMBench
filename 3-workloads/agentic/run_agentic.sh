@@ -42,8 +42,8 @@ warmup() {
     python3 "${SCRIPT_DIR}/agentic-qa.py" \
         --num-agents "$NUM_AGENTS" \
         --num-rounds 2 \
-        --shared-system-prompt "$(echo -n "$SYSTEM_PROMPT" | wc -w)" \
-        --user-history-prompt "$(echo -n "$CHAT_HISTORY" | wc -w)" \
+        --shared-system-prompt "$SYSTEM_PROMPT" \
+        --user-history-prompt "$CHAT_HISTORY" \
         --answer-len "$ANSWER_LEN" \
         --model $MODEL_LIST \
         --base-url "$BASE_URL" \
@@ -65,8 +65,8 @@ run_benchmark() {
     echo "Running benchmark with new_user_interval=$new_user_interval..."
     python3 "${SCRIPT_DIR}/agentic-qa.py" \
         --num-agents "$NUM_AGENTS" \
-        --shared-system-prompt "$(echo -n "$SYSTEM_PROMPT" | wc -w)" \
-        --user-history-prompt "$(echo -n "$CHAT_HISTORY" | wc -w)" \
+        --shared-system-prompt "$SYSTEM_PROMPT" \
+        --user-history-prompt "$CHAT_HISTORY" \
         --answer-len "$ANSWER_LEN" \
         --num-rounds "$NUM_ROUNDS" \
         --model $MODEL_LIST \

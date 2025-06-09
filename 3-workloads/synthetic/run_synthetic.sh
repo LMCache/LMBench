@@ -44,8 +44,8 @@ warmup() {
         --num-users 1 \
         --num-rounds 2 \
         --qps 2 \
-        --shared-system-prompt "$(echo -n "$SYSTEM_PROMPT" | wc -w)" \
-        --user-history-prompt "$(echo -n "$CHAT_HISTORY" | wc -w)" \
+        --shared-system-prompt "$SYSTEM_PROMPT" \
+        --user-history-prompt "$CHAT_HISTORY" \
         --answer-len $ANSWER_LEN \
         --model "$MODEL" \
         --base-url "$BASE_URL" \
@@ -67,8 +67,8 @@ run_benchmark() {
     echo "Running benchmark with QPS=$qps..."
     python3 "${SCRIPT_DIR}/multi-round-qa.py" \
         --num-users "$NUM_USERS" \
-        --shared-system-prompt "$(echo -n "$SYSTEM_PROMPT" | wc -w)" \
-        --user-history-prompt "$(echo -n "$CHAT_HISTORY" | wc -w)" \
+        --shared-system-prompt "$SYSTEM_PROMPT" \
+        --user-history-prompt "$CHAT_HISTORY" \
         --answer-len "$ANSWER_LEN" \
         --num-rounds "$NUM_ROUNDS" \
         --qps "$qps" \
