@@ -479,14 +479,14 @@ class UserSessionManager:
         ]
         logger.info(f"There are {len(self.sharegpt_data)} users satisfying ")
 
-    def _ramp_up(self, timestamp: float, ramp_up_time: float):
+    def _ramp_up(self, timestamp: float):
+        """Create all users upfront and simulate staggered start times"""
         for i in range(self.workload_config.num_users):
             new_session = self._create_user_session()
-            offset = ramp_up_time - i * self.gap_between_users
-            if offset < 0:
-                break
+            offset = i * self.gap_between_users  # earliest user has smallest offset (already running)
             new_session.set_internal_state(offset, timestamp)
         self.need_ramp_up = False
+        self.last_user_join = timestamp  # Prevent immediate extra user creation
 
     def _create_user_session(self):
         self.user_id += 1
@@ -512,14 +512,14 @@ class UserSessionManager:
         self.sessions = [s for s in self.sessions if not s.finished]
 
     def step(self, timestamp: float, executor: RequestExecutor):
-        # FIXED: Disable broken ramp-up that creates duplicate users
-        # if self.need_ramp_up:
-        #     self._ramp_up(timestamp, self.ramp_up_time)
+        # Use the fixed ramp-up
+        if self.need_ramp_up:
+            self._ramp_up(timestamp)
 
         if self.start_time is None:
             self.start_time = timestamp
 
-        # FIXED: Create users properly up to the target number
+        # Only create new users if some sessions have finished and we are below target
         if len(self.sessions) < self.workload_config.num_users:
             if timestamp - self.last_user_join > self.gap_between_users:
                 new_session = self._create_user_session()
