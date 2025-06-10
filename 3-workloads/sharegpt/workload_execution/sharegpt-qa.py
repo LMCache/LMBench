@@ -144,7 +144,7 @@ class RequestExecutor:
 class BenchmarkRunner:
     """Dispatch prompts at desired QPS and collect latency metrics."""
 
-    def __init__(self, prompts: List[dict], executor: RequestExecutor, qps: float, time_limit: Optional[int] = None, request_with_user_id: bool = False):
+    def __init__(self, prompts: List[dict], executor: RequestExecutor, qps: float, time_limit: Optional[int] = None, request_with_user_id: bool = True):
         self.prompts = prompts
         self.executor = executor
         self.qps = qps

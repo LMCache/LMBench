@@ -288,8 +288,12 @@ class UserSession:
         def gen_dummy_text(length):
             return " ".join(["hi"] * length)
 
+        # Shared system prompt (same for all users)
         dummy_text_sys = gen_dummy_text(self.user_config.system_prompt_len)
-        dummy_text_user = gen_dummy_text(self.user_config.user_info_len)
+
+        # User-specific context (unique per user) - just prepend user_id
+        dummy_text_user = f"user_{self.user_config.user_id} " + gen_dummy_text(self.user_config.user_info_len - 1)
+
         system_prompt = (
             f"Hi, here's some system prompt: {dummy_text_sys}."
             + f"Here are some other context: {dummy_text_user}."

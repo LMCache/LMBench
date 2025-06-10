@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+**/*.out
+
 # Ignore ALL csv and json and png files in 4-latest-results/
 4-latest-results/**/*.csv
 4-latest-results/**/*.json

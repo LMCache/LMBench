@@ -69,8 +69,8 @@ Workload:
     - NUM_USERS_WARMUP: 650
       NUM_USERS: 350
       NUM_ROUNDS: 20
-      SYSTEM_PROMPT: 0
-      CHAT_HISTORY: 20000
+      SYSTEM_PROMPT: 0 # shared between users
+      CHAT_HISTORY: 20000 # unique for each user
       ANSWER_LEN: 1000
       QPS: [0.7]
       USE_SHAREGPT: false

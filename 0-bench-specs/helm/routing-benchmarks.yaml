@@ -1,4 +1,4 @@
-Name: helm-routing-benchmarks
+Name: routing-algorithms
 
 # Suggested Infrastructure (in run-bench.yaml)
 # 1-infrastructure:
@@ -9,14 +9,14 @@ Name: helm-routing-benchmarks
 #   Location: LocalMinikube
 
 Serving:
-  - Helm-ProductionStack:
-      helmConfigSelection: routing/4-no-lmcache-no-prefix.yaml
-      hf_token: <YOUR_HF_TOKEN>
-      modelURL: meta-llama/Llama-3.1-8B-Instruct
-  - Helm-ProductionStack:
-      helmConfigSelection: routing/4-no-lmcache.yaml
-      hf_token: <YOUR_HF_TOKEN>
-      modelURL: meta-llama/Llama-3.1-8B-Instruct
+#   - Helm-ProductionStack:
+#       helmConfigSelection: routing/4-no-lmcache-no-prefix.yaml
+#       hf_token: <YOUR_HF_TOKEN>
+#       modelURL: meta-llama/Llama-3.1-8B-Instruct
+#   - Helm-ProductionStack:
+#       helmConfigSelection: routing/4-no-lmcache.yaml
+#       hf_token: <YOUR_HF_TOKEN>
+#       modelURL: meta-llama/Llama-3.1-8B-Instruct
   - Helm-ProductionStack:
       helmConfigSelection: routing/4-roundrobin.yaml
       hf_token: <YOUR_HF_TOKEN>
@@ -37,8 +37,8 @@ Serving:
 Workload:
   LMCacheSynthetic:
     # long input short output:
-    - NUM_USERS_WARMUP: 300
-      NUM_USERS: 300
+    - NUM_USERS_WARMUP: 200
+      NUM_USERS: 200
       NUM_ROUNDS: 20
       SYSTEM_PROMPT: 1000
       CHAT_HISTORY: 12000
