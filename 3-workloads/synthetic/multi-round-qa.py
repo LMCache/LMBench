@@ -456,12 +456,10 @@ class UserSessionManager:
         logger.info(f"There are {len(self.sharegpt_data)} users satisfying ")
 
     def _ramp_up(self, timestamp: float, ramp_up_time: float):
+        # FIXED: Simplified ramp-up - just create users without artificial internal state
         for i in range(self.workload_config.num_users):
             new_session = self._create_user_session()
-            offset = ramp_up_time - i * self.gap_between_users
-            if offset < 0:
-                break
-            new_session.set_internal_state(offset, timestamp)
+            # Don't set artificial internal state - let users start fresh
         self.need_ramp_up = False
 
     def _create_user_session(self):
@@ -494,14 +492,15 @@ class UserSessionManager:
         if self.start_time is None:
             self.start_time = timestamp
 
-        if timestamp - self.last_user_join > self.gap_between_users:
-            new_session = self._create_user_session()
-            if new_session is not None:
-                self.last_user_join = timestamp
-                logger.info(
-                    f"Joined a new user {self.user_id}, "
-                    f"now active users: {len(self.sessions)}"
-                )
+        # FIXED: Don't create additional users after ramp-up
+        # if timestamp - self.last_user_join > self.gap_between_users:
+        #     new_session = self._create_user_session()
+        #     if new_session is not None:
+        #         self.last_user_join = timestamp
+        #         logger.info(
+        #             f"Joined a new user {self.user_id}, "
+        #             f"now active users: {len(self.sessions)}"
+        #         )
 
         for session in self.sessions:
             session.step(timestamp, executor)

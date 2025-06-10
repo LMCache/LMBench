@@ -36,12 +36,11 @@ Serving:
 
 Workload:
   LMCacheSynthetic:
-    # long input short output:
-    - NUM_USERS_WARMUP: 200
-      NUM_USERS: 200
-      NUM_ROUNDS: 20
+    - NUM_USERS_WARMUP: 160
+      NUM_USERS: 160
+      NUM_ROUNDS: 15
       SYSTEM_PROMPT: 1000
       CHAT_HISTORY: 12000
       ANSWER_LEN: 100
-      QPS: [1, 2, 3, 4, 5, 6, 7, 8]
+      QPS: [1, 2, 3, 4, 5, 6]
       USE_SHAREGPT: false
