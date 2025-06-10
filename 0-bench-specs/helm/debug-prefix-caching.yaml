@@ -13,19 +13,19 @@ Serving:
       helmConfigSelection: routing/1-no-lmcache.yaml
       hf_token: <YOUR_HF_TOKEN>
       modelURL: meta-llama/Llama-3.1-8B-Instruct
-  - Helm-ProductionStack:
-      helmConfigSelection: routing/1-no-lmcache-no-prefix.yaml
-      hf_token: <YOUR_HF_TOKEN>
-      modelURL: meta-llama/Llama-3.1-8B-Instruct
-  - Helm-ProductionStack:
-      helmConfigSelection: routing/1-roundrobin.yaml
-      hf_token: <YOUR_HF_TOKEN>
-      modelURL: meta-llama/Llama-3.1-8B-Instruct
+  # - Helm-ProductionStack:
+  #     helmConfigSelection: routing/1-no-lmcache-no-prefix.yaml
+  #     hf_token: <YOUR_HF_TOKEN>
+  #     modelURL: meta-llama/Llama-3.1-8B-Instruct
+  # - Helm-ProductionStack:
+  #     helmConfigSelection: routing/1-roundrobin.yaml
+  #     hf_token: <YOUR_HF_TOKEN>
+  #     modelURL: meta-llama/Llama-3.1-8B-Instruct
 
 Workload:
   LMCacheSynthetic:
-    - NUM_USERS_WARMUP: 20
-      NUM_USERS: 20
+    - NUM_USERS_WARMUP: 160
+      NUM_USERS: 160
       NUM_ROUNDS: 20
       SYSTEM_PROMPT: 1000
       CHAT_HISTORY: 12000
