@@ -49,20 +49,11 @@ if [ ! -f "$HELM_CONFIG_FILE" ]; then
     exit 1
 fi
 
-# Add Helm repo if not already added
-echo "Adding vLLM Helm repository..."
-helm repo add vllm https://vllm-project.github.io/production-stack || true
-helm repo update
-
 # Kill any process using port 30080
 if lsof -ti :30080 > /dev/null; then
   echo "⚠️  Port 30080 is already in use. Killing existing process..."
   kill -9 $(lsof -ti :30080)
 fi
-
-# Make sure there is no current release
-echo "Uninstalling any existing helm releases..."
-helm uninstall vllm || true
 
 # Clean up any existing deployments to avoid conflicts
 echo "Cleaning up kubectl resources..."
@@ -105,10 +96,14 @@ fi
 
 sed "s/<YOUR_HF_TOKEN>/$HF_TOKEN/g" "$HELM_CONFIG_FILE" > "$PROCESSED_CONFIG_FILE"
 
+# Clone production-stack repo
+git clone https://github.com/vllm-project/production-stack.git
 # Install the stack
 echo "Installing vLLM stack..."
+# make sure we don't have an existing release
+helm uninstall vllm || true
 # release name is vllm
-helm install vllm vllm/vllm-stack -f "$PROCESSED_CONFIG_FILE"
+helm install vllm production-stack/helm -f "$PROCESSED_CONFIG_FILE"
 
 # IMMEDIATELY patch deployment strategy to avoid creating excess pods
 echo "🔧 Patching deployment strategy to avoid creating excess pods..."
