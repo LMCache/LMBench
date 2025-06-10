@@ -300,12 +300,16 @@ class UserSession:
         )
         return system_prompt
 
-    def _build_new_question(self):
-        self.question_id += 1
+    def _build_question_text(self, question_num: int):
+        """Build question text without incrementing question_id"""
         return (
-            f"Here's question #{self.question_id} from user {self.user_config.user_id}: can you tell me "
+            f"Here's question #{question_num} from user {self.user_config.user_id}: can you tell me "
             + "a new long story with a happy ending?"
         )
+
+    def _build_new_question(self):
+        self.question_id += 1
+        return self._build_question_text(self.question_id)
 
     def _launch_new_request(self, timestamp: float, request_executor: RequestExecutor):
         if self.use_sharegpt:
@@ -369,9 +373,29 @@ class UserSession:
 
         self.last_request_time = timestamp - offset + passed_time
         self.question_id = num_passed_questions
+
+        # FIXED: Build actual chat history for simulated conversation
+        if num_passed_questions > 0:
+            # Build the initial system prompt + first user query
+            first_prompt = self._build_system_prompt() + self._build_question_text(1)
+            self.chat_history.on_user_query(first_prompt)
+
+            # Add a dummy response for the first question
+            dummy_response = "Thank you for the question! " + " ".join(["hi"] * (self.user_config.answer_len - 10))
+            self.chat_history.on_system_response(dummy_response)
+
+            # Build remaining conversation history
+            for i in range(1, num_passed_questions):
+                user_query = self._build_question_text(i + 1)
+                self.chat_history.on_user_query(user_query)
+
+                dummy_response = f"Here's story #{i+1}: " + " ".join(["hi"] * (self.user_config.answer_len - 5))
+                self.chat_history.on_system_response(dummy_response)
+
         logger.debug(
             f"Set internal state for user {self.user_config.user_id}, "
             f"question_id: {self.question_id}, "
+            f"chat_history_length: {len(self.chat_history)}, "
             f"last_request_time: {self.last_request_time}"
         )
 
@@ -456,10 +480,12 @@ class UserSessionManager:
         logger.info(f"There are {len(self.sharegpt_data)} users satisfying ")
 
     def _ramp_up(self, timestamp: float, ramp_up_time: float):
-        # FIXED: Simplified ramp-up - just create users without artificial internal state
         for i in range(self.workload_config.num_users):
             new_session = self._create_user_session()
-            # Don't set artificial internal state - let users start fresh
+            offset = ramp_up_time - i * self.gap_between_users
+            if offset < 0:
+                break
+            new_session.set_internal_state(offset, timestamp)
         self.need_ramp_up = False
 
     def _create_user_session(self):
@@ -486,21 +512,23 @@ class UserSessionManager:
         self.sessions = [s for s in self.sessions if not s.finished]
 
     def step(self, timestamp: float, executor: RequestExecutor):
-        if self.need_ramp_up:
-            self._ramp_up(timestamp, self.ramp_up_time)
+        # FIXED: Disable broken ramp-up that creates duplicate users
+        # if self.need_ramp_up:
+        #     self._ramp_up(timestamp, self.ramp_up_time)
 
         if self.start_time is None:
             self.start_time = timestamp
 
-        # FIXED: Don't create additional users after ramp-up
-        # if timestamp - self.last_user_join > self.gap_between_users:
-        #     new_session = self._create_user_session()
-        #     if new_session is not None:
-        #         self.last_user_join = timestamp
-        #         logger.info(
-        #             f"Joined a new user {self.user_id}, "
-        #             f"now active users: {len(self.sessions)}"
-        #         )
+        # FIXED: Create users properly up to the target number
+        if len(self.sessions) < self.workload_config.num_users:
+            if timestamp - self.last_user_join > self.gap_between_users:
+                new_session = self._create_user_session()
+                if new_session is not None:
+                    self.last_user_join = timestamp
+                    logger.info(
+                        f"Joined a new user {self.user_id}, "
+                        f"now active users: {len(self.sessions)}"
+                    )
 
         for session in self.sessions:
             session.step(timestamp, executor)

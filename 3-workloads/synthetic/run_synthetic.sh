@@ -39,11 +39,12 @@ fi
 INIT_USER_ID=1
 
 warmup() {
-    echo "Warming up with QPS=$((NUM_USERS_WARMUP / 2))..."
+    local qps=$1
+    echo "Warming up with QPS=$qps..."
     python3 "${SCRIPT_DIR}/multi-round-qa.py" \
-        --num-users 1 \
-        --num-rounds 2 \
-        --qps 2 \
+        --num-users "$NUM_USERS_WARMUP" \
+        --num-rounds "$NUM_ROUNDS" \
+        --qps "$QPS_VALUES" \
         --shared-system-prompt "$SYSTEM_PROMPT" \
         --user-history-prompt "$CHAT_HISTORY" \
         --answer-len $ANSWER_LEN \
