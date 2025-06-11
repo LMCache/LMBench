@@ -210,7 +210,7 @@ spec:
     spec:
       containers:
         - name: "vllm"
-          image: "lmcache/vllm-openai:latest"
+          image: "lmcache/vllm-openai:latest-nightly"
           command:
           - "/opt/venv/bin/vllm"
           - "serve"
@@ -221,7 +221,7 @@ spec:
           - "8000"
           - "--no-enable-prefix-caching"
           - "--max-model-len"
-          - "32000"
+          - "16384"
           - "--dtype"
           - "bfloat16"
           - "--disable-log-requests"

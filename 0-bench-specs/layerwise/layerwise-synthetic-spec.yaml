@@ -1,4 +1,4 @@
-Name: layerwise-store-retrieve
+Name: layerwise-qa-store-retrieve
 
 # Suggested Infrastructure (in run-bench.yaml)
 # 1-infrastructure:
@@ -18,12 +18,11 @@ Serving:
 
 Workload:
   LMCacheSynthetic:
-    # short input short output:
-    - NUM_USERS_WARMUP: 0
-      NUM_USERS: 10
-      NUM_ROUNDS: 2
-      SYSTEM_PROMPT: 0
-      CHAT_HISTORY: 8000
-      ANSWER_LEN: 20
-      QPS: [0.5, 1, 1.5, 2]
-      USE_SHAREGPT: false
+  - NUM_USERS_WARMUP: 20
+    NUM_USERS: 20
+    NUM_ROUNDS: 20
+    SYSTEM_PROMPT: 1000
+    CHAT_HISTORY: 20000
+    ANSWER_LEN: 100
+    QPS: [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]
+    USE_SHAREGPT: false

@@ -1,4 +1,4 @@
-Name: layerwise-store-only
+Name: layerwise-random-store-only
 
 # Suggested Infrastructure (in run-bench.yaml)
 # 1-infrastructure:
@@ -22,6 +22,6 @@ Workload:
     # long random prompts:
     - NUM_USERS: 20
       NUM_ROUNDS: 20
-      PROMPT_LEN: 500
-      ANSWER_LEN: 200
+      PROMPT_LEN: 2000
+      ANSWER_LEN: 100
       QPS: [0.5, 1.0, 1.5, 2.0]

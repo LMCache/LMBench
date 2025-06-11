@@ -6,10 +6,12 @@
   - helm/routing-benchmarks.yaml
   # - routing/8-spec.yaml
   # - daily/4-llama8B/prodstack.yaml
+  # - layerwise/layerwise-random-spec.yaml
+  # - layerwise/layerwise-synthetic-spec.yaml
 
 1-infrastructure:
   # Location: LocalMinikube
   # Location: NoBench
   Location: LMCacheGKE
-  numClusterGPUs: 1
+  numClusterGPUs: 4
   A100_VRAM: 40
