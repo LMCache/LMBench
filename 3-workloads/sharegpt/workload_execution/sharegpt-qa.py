@@ -68,7 +68,12 @@ class Response:
 
 
 class RequestExecutor:
-    """Thin wrapper over OpenAI async client that measures latency."""
+    """Wrapper over OpenAI completions API (not chat) that measures latency.
+    It now accepts a list of messages so that callers can maintain proper
+    conversation history. Messages are converted to a single prompt string
+    before the request, preserving previous behaviour while enabling the
+    chat-history abstraction requested by the user.
+    """
 
     def __init__(self, base_url: str, api_key: str, model: str):
         # Ensure base_url ends with /v1 for vLLM
@@ -78,7 +83,7 @@ class RequestExecutor:
         self.model = model
         self.loop = AsyncLoopWrapper.GetOrStartLoop()
 
-    async def _async_request(self, messages, max_tokens: int, extra_headers=None) -> Response:
+    async def _async_request(self, messages: list[dict], max_tokens: int, extra_headers=None) -> Response:
         start = time.time()
         first_token: Optional[float] = None
         body = ""
@@ -130,11 +135,9 @@ class RequestExecutor:
             logger.error(f"Error in request: {str(e)}")
             raise
 
-    def launch_request(self, prompt: str, max_tokens: int, on_finish, user_id=None) -> None:
-        messages = [{"role": "user", "content": prompt}]
-        extra_headers = {"x-user-id": str(user_id)} if user_id is not None else None
+    def launch_request(self, messages: list[dict], max_tokens: int, on_finish, user_id=None) -> None:
         fut = asyncio.run_coroutine_threadsafe(
-            self._async_request(messages, max_tokens, extra_headers), self.loop)
+            self._async_request(messages, max_tokens, {"x-user-id": str(user_id)} if user_id is not None else None), self.loop)
         fut.add_done_callback(lambda f: on_finish(f.result()))
 
 # ---------------------------------------------------------------------------
@@ -160,6 +163,9 @@ class BenchmarkRunner:
     def run(self) -> pd.DataFrame:
         logger.info("Benchmark started: %d prompts at %.2f QPS", len(self.prompts), self.qps)
 
+        # conversation_id -> history list; each history item is {'role': str, 'content': str}
+        histories: dict[int, list[dict]] = {}
+
         while self._next_idx < len(self.prompts):
             # Check time limit
             if self.time_limit is not None and time.time() - self.start_time > self.time_limit:
@@ -172,15 +178,43 @@ class BenchmarkRunner:
                 continue
 
             entry = self.prompts[self._next_idx]
-            prompt = str(self.qps) + " " + entry["input"] # To avoid cache hit cross run
-            max_tokens = entry.get("output_length", 1)
 
-            # Use conversation_id as user_id if available, otherwise fall back to request index
-            if self.request_with_user_id:
-                user_id = entry.get("conversation_id", self._next_idx)
-            else:
-                user_id = None
-            self.executor.launch_request(prompt, max_tokens, self._on_finish, user_id)
+            conv_id = entry.get("conversation_id", self._next_idx)
+
+            # Initialise history with a static system prompt once
+            if conv_id not in histories:
+                histories[conv_id] = [
+                    {"role": "system", "content": "You are a helpful assistant."}
+                ]
+
+            # Append new user message
+            histories[conv_id].append({"role": "user", "content": entry["input"]})
+
+            # Trim history to keep the prompt within model context –
+            # keep the system message plus the most recent 32 messages
+            if len(histories[conv_id]) > 33:
+                sys_msg = histories[conv_id][0]
+                histories[conv_id] = [sys_msg] + histories[conv_id][-32:]
+
+            # Build prompt string from full history
+            prompt_parts = []
+            for msg in histories[conv_id]:
+                role = msg["role"]
+                content = msg["content"]
+                if role == "system":
+                    prompt_parts.append(f"System: {content}\n")
+                elif role == "user":
+                    prompt_parts.append(f"User: {content}\n")
+                else:  # assistant
+                    prompt_parts.append(f"Assistant: {content}\n")
+            prompt_parts.append("Assistant: ")
+            prompt = "".join(prompt_parts)
+
+            max_tokens = min(256, entry.get("output_length", 128))
+
+            user_id = conv_id if self.request_with_user_id else None
+
+            self.executor.launch_request(histories[conv_id].copy(), max_tokens, self._on_finish, user_id)
 
             self._next_idx += 1
 

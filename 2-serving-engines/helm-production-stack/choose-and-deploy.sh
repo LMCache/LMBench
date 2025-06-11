@@ -68,6 +68,18 @@ kubectl delete networkpolicy --all
 kubectl delete role --all
 kubectl delete rolebinding --all
 
+# Add these:
+kubectl delete deployment --all
+kubectl delete statefulset --all
+kubectl delete daemonset --all
+kubectl delete replicaset --all
+kubectl delete job --all
+kubectl delete cronjob --all
+kubectl delete hpa --all
+kubectl delete pdb --all
+kubectl delete service --all
+kubectl delete endpoints --all
+
 # Wait for all resources to be fully deleted
 echo "Waiting for all resources to be fully deleted..."
 while true; do
@@ -96,6 +108,8 @@ fi
 
 sed "s/<YOUR_HF_TOKEN>/$HF_TOKEN/g" "$HELM_CONFIG_FILE" > "$PROCESSED_CONFIG_FILE"
 
+# Remove any existing production-stack repo
+rm -rf production-stack
 # Clone production-stack repo
 git clone https://github.com/vllm-project/production-stack.git
 # Install the stack
@@ -292,8 +306,8 @@ fi
 
 # Wait until all pods are ready
 echo "Waiting for all pods to be ready..."
-# Add timeout of 20 minutes (1200 seconds)
-TIMEOUT=1200
+# Add timeout of 25 minutes (1500 seconds)
+TIMEOUT=1500
 START_TIME=$(date +%s)
 while true; do
   # Check if we've reached the timeout

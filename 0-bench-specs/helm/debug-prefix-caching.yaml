@@ -23,12 +23,19 @@ Serving:
       modelURL: meta-llama/Llama-3.1-8B-Instruct
 
 Workload:
-  LMCacheSynthetic:
-    - NUM_USERS_WARMUP: 20
-      NUM_USERS: 20
-      NUM_ROUNDS: 20
-      SYSTEM_PROMPT: 1000
-      CHAT_HISTORY: 12000
-      ANSWER_LEN: 100
-      QPS: [0.5, 1, 1.5, 2]
-      USE_SHAREGPT: false
+  ShareGPT:
+    # High memory pressure ShareGPT workload to trigger LMCache KV offloading:
+    - LIMIT: 1000
+      MIN_ROUNDS: 10
+      START_ROUND: 0
+      QPS: [2, 4, 6, 8]
+
+  # LMCacheSynthetic:
+  #   - NUM_USERS_WARMUP: 20
+  #     NUM_USERS: 20
+  #     NUM_ROUNDS: 20
+  #     SYSTEM_PROMPT: 1000
+  #     CHAT_HISTORY: 12000
+  #     ANSWER_LEN: 100
+  #     QPS: [0.5, 1, 1.5, 2]
+  #     USE_SHAREGPT: false

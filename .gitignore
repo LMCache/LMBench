@@ -9,6 +9,7 @@ __pycache__/
 4-latest-results/**/*.csv
 4-latest-results/**/*.json
 4-latest-results/**/*.png
+**/production-stack
 
 # Distribution / packaging
 .Python

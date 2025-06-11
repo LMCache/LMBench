@@ -1,4 +1,5 @@
 0-bench-specs:
+  # - single-debug/1-lmcache-spec.yaml
   # - helm/debug-prefix-caching.yaml
   # - helm/vllm-benchmark-serving-workloads.yaml
   # - helm/basic-spec.yaml # really good for debugging workloads
@@ -10,5 +11,5 @@
   # Location: LocalMinikube
   # Location: NoBench
   Location: LMCacheGKE
-  numClusterGPUs: 4
+  numClusterGPUs: 1
   A100_VRAM: 40

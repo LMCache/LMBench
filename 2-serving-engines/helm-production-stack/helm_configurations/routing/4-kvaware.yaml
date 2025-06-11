@@ -12,7 +12,7 @@ servingEngineSpec:
     pvcStorage: "50Gi"
     vllmConfig:
       enablePrefixCaching: true
-      maxModelLen: 16384
+      maxModelLen: 32000
       v1: 1
 
     lmcacheConfig:
@@ -27,7 +27,6 @@ servingEngineSpec:
       - name: LMCACHE_LOG_LEVEL
         value: "DEBUG"
     hf_token: <YOUR_HF_TOKEN>
-
   - name: "llama2"
     repository: "lmcache/vllm-openai"
     tag: "2025-05-27-v1"
@@ -39,7 +38,7 @@ servingEngineSpec:
     pvcStorage: "50Gi"
     vllmConfig:
       enablePrefixCaching: true
-      maxModelLen: 16384
+      maxModelLen: 32000
       v1: 1
 
     lmcacheConfig:
@@ -61,12 +60,12 @@ servingEngineSpec:
     modelURL: "meta-llama/Llama-3.1-8B-Instruct"
     replicaCount: 1
     requestCPU: 6
-    requestMemory: "30Gi"
+    requestMemory: "70Gi"
     requestGPU: 1
     pvcStorage: "50Gi"
     vllmConfig:
       enablePrefixCaching: true
-      maxModelLen: 16384
+      maxModelLen: 32000
       v1: 1
 
     lmcacheConfig:
@@ -81,19 +80,18 @@ servingEngineSpec:
       - name: LMCACHE_LOG_LEVEL
         value: "DEBUG"
     hf_token: <YOUR_HF_TOKEN>
-
   - name: "llama4"
     repository: "lmcache/vllm-openai"
     tag: "2025-05-27-v1"
     modelURL: "meta-llama/Llama-3.1-8B-Instruct"
     replicaCount: 1
     requestCPU: 6
-    requestMemory: "30Gi"
+    requestMemory: "70Gi"
     requestGPU: 1
     pvcStorage: "50Gi"
     vllmConfig:
       enablePrefixCaching: true
-      maxModelLen: 16384
+      maxModelLen: 32000
       v1: 1
 
     lmcacheConfig:
@@ -109,10 +107,9 @@ servingEngineSpec:
         value: "DEBUG"
     hf_token: <YOUR_HF_TOKEN>
 
-
 routerSpec:
   repository: "lmcache/lmstack-router"
-  tag: "kvaware"
+  tag: "kvaware-latest"
   resources:
     requests:
       cpu: "1"
@@ -122,3 +119,5 @@ routerSpec:
       memory: "2G"
   routingLogic: "kvaware"
   lmcacheControllerPort: 9000
+  hf_token: <YOUR_HF_TOKEN>
+  sessionKey: "x-user-id"

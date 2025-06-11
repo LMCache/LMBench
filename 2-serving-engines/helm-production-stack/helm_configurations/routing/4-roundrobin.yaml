@@ -14,7 +14,7 @@ servingEngineSpec:
       - ReadWriteOnce
     vllmConfig:
       enablePrefixCaching: true
-      maxModelLen: 16384
+      maxModelLen: 32000
       v1: 1
     lmcacheConfig:
       enabled: true
@@ -23,7 +23,7 @@ servingEngineSpec:
 
 routerSpec:
   repository: "lmcache/lmstack-router"
-  tag: "kvaware"
+  tag: "kvaware-latest"
   resources:
     requests:
       cpu: "1"

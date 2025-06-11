@@ -1,0 +1,62 @@
+Name: try-32000-max-model-len
+
+# Suggested Infrastructure (in run-bench.yaml)
+# 1-infrastructure:
+#   Location: LMCacheGKE
+#   numClusterGPUs: 4
+#   A100_VRAM: 40
+
+Serving:
+  - Helm-ProductionStack:
+      helmConfigSelection: routing/1-roundrobin.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+
+Workload:
+
+  LMCacheSynthetic:
+  #   # long input long output:
+  #   - NUM_USERS_WARMUP: 750
+  #     NUM_USERS: 350
+  #     NUM_ROUNDS: 20
+  #     SYSTEM_PROMPT: 0
+  #     CHAT_HISTORY: 20000
+  #     ANSWER_LEN: 1000
+  #     QPS: [0.7]
+  #     USE_SHAREGPT: true
+
+  #   # long input short output:
+  #   - NUM_USERS_WARMUP: 20
+  #     NUM_USERS: 15
+  #     NUM_ROUNDS: 20
+  #     SYSTEM_PROMPT: 1000
+  #     CHAT_HISTORY: 20000
+  #     ANSWER_LEN: 100
+  #     QPS: [0.1]
+  #     USE_SHAREGPT: true
+
+    # short input short output:
+    - NUM_USERS_WARMUP: 5
+      NUM_USERS: 10
+      NUM_ROUNDS: 10
+      SYSTEM_PROMPT: 10
+      CHAT_HISTORY: 8000
+      ANSWER_LEN: 20
+      QPS: [0.5]
+      USE_SHAREGPT: false
+
+  # Mooncake:
+  # - NUM_ROUNDS: 10
+  #   SYSTEM_PROMPT: 0
+  #   CHAT_HISTORY: 256
+  #   ANSWER_LEN: 20
+  #   QPS: [0.5]
+
+  # Agentic:
+  # - NUM_USERS_WARMUP: 100
+  #   NUM_AGENTS: 10
+  #   NUM_ROUNDS: 10
+  #   SYSTEM_PROMPT: 0
+  #   CHAT_HISTORY: 100
+  #   ANSWER_LEN: 20
+  #   NEW_USER_INTERVALS: [1]
