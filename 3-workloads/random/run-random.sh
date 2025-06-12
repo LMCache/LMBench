@@ -36,10 +36,11 @@ fi
 INIT_USER_ID=1
 
 collect_pod_logs() {
-    local workload="$1"
-    local qps="$2"
+    local baseline="$1"
+    local workload="$2"
+    local qps="$3"
 
-    echo "📝 Collecting pod logs for workload: $workload, QPS: $qps"
+    echo "📝 Collecting pod logs for baseline: $baseline, workload: $workload, QPS: $qps"
 
     # Create artifact directory structure
     LOGS_DIR="$PROJECT_ROOT/4-latest-results/$NAME/pod-logs"
@@ -55,16 +56,16 @@ collect_pod_logs() {
         # Collect logs from each pod
         echo "$ALL_PODS" | while read pod; do
             if [ -n "$pod" ]; then
-                LOG_FILE="$LOGS_DIR/${pod}_${workload}_${qps}.log"
+                LOG_FILE="$LOGS_DIR/${pod}_${baseline}_${workload}_${qps}.log"
                 echo "📥 Collecting logs from pod: $pod"
                 kubectl logs "$pod" > "$LOG_FILE" 2>&1
 
                 # Also collect previous logs if available (in case of restarts)
-                PREV_LOG_FILE="$LOGS_DIR/${pod}_${workload}_${qps}_previous.log"
+                PREV_LOG_FILE="$LOGS_DIR/${pod}_${baseline}_${workload}_${qps}_previous.log"
                 kubectl logs "$pod" --previous > "$PREV_LOG_FILE" 2>/dev/null || rm -f "$PREV_LOG_FILE"
 
                 # Collect pod description for debugging
-                DESC_FILE="$LOGS_DIR/${pod}_${workload}_${qps}_describe.txt"
+                DESC_FILE="$LOGS_DIR/${pod}_${baseline}_${workload}_${qps}_describe.txt"
                 kubectl describe pod "$pod" > "$DESC_FILE" 2>&1
             fi
         done
@@ -96,7 +97,7 @@ run_benchmark() {
     sleep 10
 
     # Collect pod logs after benchmark completion
-    collect_pod_logs "random" "$qps"
+    collect_pod_logs "$KEY" "random" "$qps"
 
     # increment init-user-id by NUM_USERS for next iteration
     INIT_USER_ID=$(( INIT_USER_ID + NUM_USERS ))
