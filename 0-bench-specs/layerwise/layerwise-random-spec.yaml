@@ -24,4 +24,4 @@ Workload:
       NUM_ROUNDS: 20
       PROMPT_LEN: 2000
       ANSWER_LEN: 100
-      QPS: [0.5, 1.0, 1.5, 2.0]
+      QPS: [0.5, 1.5]

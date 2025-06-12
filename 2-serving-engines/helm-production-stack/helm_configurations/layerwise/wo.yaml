@@ -20,6 +20,9 @@ servingEngineSpec:
       gpuMemoryUtilization: "0.95" # new for v1
       extraArgs: ["--disable-log-requests", "--swap-space", 0]
       tensorParallelSize: 1
+    env:
+      - name: LMCACHE_LOG_LEVEL
+        value: "INFO"
     lmcacheConfig:
       enabled: true
       cpuOffloadingBufferSize: "60"

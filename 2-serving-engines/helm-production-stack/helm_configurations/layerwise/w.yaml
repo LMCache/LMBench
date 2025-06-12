@@ -23,6 +23,8 @@ servingEngineSpec:
     env:
       - name: LMCACHE_USE_LAYERWISE
         value: "True"
+      - name: LMCACHE_LOG_LEVEL
+        value: "INFO"
     lmcacheConfig:
       enabled: true
       cpuOffloadingBufferSize: "60"
