@@ -49,7 +49,7 @@ done
 
 echo "Ready for port forwarding!"
 
-kubectl port-forward svc/sglang-service 30080:30000 &
+nohup kubectl port-forward svc/sglang-service 30080:30000 > /dev/null 2>&1 &
 
 
 # Testing it manually:

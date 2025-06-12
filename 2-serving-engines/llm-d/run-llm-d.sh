@@ -5,6 +5,8 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+VALUES_FILE=$1
+
 # ------------------------ NEW: argument parsing ------------------------
 # Supports one optional flag: --skip-node-affinity to bypass node pool assignment
 SKIP_NODE_AFFINITY=false
@@ -90,7 +92,7 @@ cd llm-d-deployer/quickstart
 bash ./install-deps.sh
 
 # Run llmd installer with minikube
-bash ./llmd-installer.sh --minikube
+bash ./llmd-installer.sh --minikube --values-file $VALUES_FILE
 
 # Set up Istio ingress gateway
 helm repo add istio https://istio-release.storage.googleapis.com/charts || true

@@ -403,7 +403,7 @@ done
 echo "Ready for port forwarding!"
 
 # Start port forwarding in the background
-kubectl port-forward svc/vllm-router-service 30080:80 &
+nohup kubectl port-forward svc/vllm-router-service 30080:80 > /dev/null 2>&1 &
 echo "Port forwarding started on 30080"
 
 # Clean up temporary file

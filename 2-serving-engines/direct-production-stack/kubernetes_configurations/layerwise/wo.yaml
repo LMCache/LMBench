@@ -221,7 +221,7 @@ spec:
           - "8000"
           - "--no-enable-prefix-caching"
           - "--max-model-len"
-          - "16384"
+          - "32000"
           - "--dtype"
           - "bfloat16"
           - "--disable-log-requests"

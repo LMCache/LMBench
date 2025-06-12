@@ -498,10 +498,15 @@ def helm_installation_with_config(prodstack_config: Dict[str, Any], global_confi
         raise ValueError("helmConfigSelection must be specified in bench-spec.yaml for Helm-ProductionStack baseline")
 
     # Ensure HF_TOKEN environment variable is set for the script
-    global HF_TOKEN
+    global HF_TOKEN, CURRENT_SPEC_CONFIG, LMBENCH_SESSION_ID
     if not HF_TOKEN:
         raise ValueError("HF_TOKEN is not set when trying to deploy Helm-ProductionStack baseline")
     os.environ['HF_TOKEN'] = HF_TOKEN
+
+    # Set environment variables for log collection
+    benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
+    os.environ['LMBENCH_BENCHMARK_NAME'] = benchmark_name
+    os.environ['LMBENCH_SESSION_ID'] = LMBENCH_SESSION_ID or 'unknown'
 
     # Execute the choose-and-deploy script
     deploy_script_path = Path(__file__).parent / '2-serving-engines' / 'helm-production-stack' / 'choose-and-deploy.sh'
@@ -530,10 +535,15 @@ def kubernetes_application(direct_production_stack_config: Dict[str, Any], globa
         raise ValueError("kubernetesConfigSelection must be specified in bench-spec.yaml for Direct-ProductionStack baseline")
 
     # Ensure HF_TOKEN environment variable is set for the script
-    global HF_TOKEN
+    global HF_TOKEN, CURRENT_SPEC_CONFIG, LMBENCH_SESSION_ID
     if not HF_TOKEN:
         raise ValueError("HF_TOKEN is not set when trying to deploy Direct-ProductionStack baseline")
     os.environ['HF_TOKEN'] = HF_TOKEN
+
+    # Set environment variables for log collection
+    benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
+    os.environ['LMBENCH_BENCHMARK_NAME'] = benchmark_name
+    os.environ['LMBENCH_SESSION_ID'] = LMBENCH_SESSION_ID or 'unknown'
 
     # Execute the choose-and-deploy script
     deploy_script_path = Path(__file__).parent / '2-serving-engines' / 'direct-production-stack' / 'choose-and-deploy.sh'

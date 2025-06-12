@@ -35,6 +35,46 @@ fi
 # init-user-id starts at 1, will add 400 each iteration
 INIT_USER_ID=1
 
+collect_pod_logs() {
+    local workload="$1"
+    local qps="$2"
+
+    echo "📝 Collecting pod logs for workload: $workload, QPS: $qps"
+
+    # Create artifact directory structure
+    LOGS_DIR="$PROJECT_ROOT/4-latest-results/$NAME/pod-logs"
+    mkdir -p "$LOGS_DIR"
+
+    # Get all pod names
+    ALL_PODS=$(kubectl get pods -o name 2>/dev/null | sed 's/pod\///')
+
+    if [ -n "$ALL_PODS" ]; then
+        echo "📋 Found $(echo "$ALL_PODS" | wc -l) pods to collect logs from:"
+        echo "$ALL_PODS"
+
+        # Collect logs from each pod
+        echo "$ALL_PODS" | while read pod; do
+            if [ -n "$pod" ]; then
+                LOG_FILE="$LOGS_DIR/${pod}_${workload}_${qps}.log"
+                echo "📥 Collecting logs from pod: $pod"
+                kubectl logs "$pod" > "$LOG_FILE" 2>&1
+
+                # Also collect previous logs if available (in case of restarts)
+                PREV_LOG_FILE="$LOGS_DIR/${pod}_${workload}_${qps}_previous.log"
+                kubectl logs "$pod" --previous > "$PREV_LOG_FILE" 2>/dev/null || rm -f "$PREV_LOG_FILE"
+
+                # Collect pod description for debugging
+                DESC_FILE="$LOGS_DIR/${pod}_${workload}_${qps}_describe.txt"
+                kubectl describe pod "$pod" > "$DESC_FILE" 2>&1
+            fi
+        done
+
+        echo "✅ Pod logs collected in: $LOGS_DIR"
+    else
+        echo "⚠️ No pods found to collect logs from"
+    fi
+}
+
 run_benchmark() {
     local qps=$1
     local output_file="../../4-latest-results/${KEY}_random_output_${qps}.csv"
@@ -54,6 +94,9 @@ run_benchmark() {
         --request-with-user-id
 
     sleep 10
+
+    # Collect pod logs after benchmark completion
+    collect_pod_logs "random" "$qps"
 
     # increment init-user-id by NUM_USERS for next iteration
     INIT_USER_ID=$(( INIT_USER_ID + NUM_USERS ))

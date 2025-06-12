@@ -53,6 +53,46 @@ else
     WORKLOAD_NAME="vllm_${DATASET_NAME}"
 fi
 
+collect_pod_logs() {
+    local workload="$1"
+    local qps="$2"
+
+    echo "📝 Collecting pod logs for workload: $workload, QPS: $qps"
+
+    # Create artifact directory structure
+    LOGS_DIR="$PROJECT_ROOT/4-latest-results/$NAME/pod-logs"
+    mkdir -p "$LOGS_DIR"
+
+    # Get all pod names
+    ALL_PODS=$(kubectl get pods -o name 2>/dev/null | sed 's/pod\///')
+
+    if [ -n "$ALL_PODS" ]; then
+        echo "📋 Found $(echo "$ALL_PODS" | wc -l) pods to collect logs from:"
+        echo "$ALL_PODS"
+
+        # Collect logs from each pod
+        echo "$ALL_PODS" | while read pod; do
+            if [ -n "$pod" ]; then
+                LOG_FILE="$LOGS_DIR/${pod}_${workload}_${qps}.log"
+                echo "📥 Collecting logs from pod: $pod"
+                kubectl logs "$pod" > "$LOG_FILE" 2>&1
+
+                # Also collect previous logs if available (in case of restarts)
+                PREV_LOG_FILE="$LOGS_DIR/${pod}_${workload}_${qps}_previous.log"
+                kubectl logs "$pod" --previous > "$PREV_LOG_FILE" 2>/dev/null || rm -f "$PREV_LOG_FILE"
+
+                # Collect pod description for debugging
+                DESC_FILE="$LOGS_DIR/${pod}_${workload}_${qps}_describe.txt"
+                kubectl describe pod "$pod" > "$DESC_FILE" 2>&1
+            fi
+        done
+
+        echo "✅ Pod logs collected in: $LOGS_DIR"
+    else
+        echo "⚠️ No pods found to collect logs from"
+    fi
+}
+
 echo "Running VLLMBenchmark workload:"
 echo "  Model: $MODEL"
 echo "  Base URL: $BASE_URL"
@@ -170,6 +210,9 @@ run_vllm_benchmark "$REQUEST_RATE" "$OUTPUT_JSON" "$OUTPUT_CSV"
 
 if [[ $? -eq 0 ]]; then
     echo "VLLMBenchmark workload completed successfully for request rate $REQUEST_RATE"
+
+    # Collect pod logs after benchmark completion
+    collect_pod_logs "$WORKLOAD_NAME" "$REQUEST_RATE"
 
     # Change to project root before running summarize.py
     cd "$PROJECT_ROOT"
