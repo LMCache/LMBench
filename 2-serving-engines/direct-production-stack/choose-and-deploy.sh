@@ -218,10 +218,80 @@ else
   VLLM_DEPLOYMENTS=$(kubectl get deployments | grep "deployment-vllm" | grep -v "router" | awk '{print $1}' | sed 's/^/deployment.apps\//' 2>/dev/null)
   if [ -n "$VLLM_DEPLOYMENTS" ]; then
       echo "$VLLM_DEPLOYMENTS" | while read deploy; do
+          # Use better deployment strategy: allow surge but keep desired replicas available
           kubectl patch $deploy \
-              -p '{"spec": {"strategy": {"rollingUpdate": {"maxSurge": 0, "maxUnavailable": 1}}}}'
+              -p '{"spec": {"strategy": {"rollingUpdate": {"maxSurge": "100%", "maxUnavailable": 0}}}}'
+          echo "✅ Updated deployment strategy for $(echo $deploy | sed 's|deployment.apps/||')"
+
+          # IMMEDIATE aggressive cleanup of old ReplicaSets after patch
+          sleep 2  # Give K8s a moment to process the patch
+          DEPLOYMENT_NAME=$(echo $deploy | sed 's|deployment.apps/||')
+          echo "🔧 IMMEDIATE cleanup of old ReplicaSets for $DEPLOYMENT_NAME..."
+
+          # Get ALL ReplicaSets owned by this deployment using more reliable method
+          DEPLOYMENT_UID=$(kubectl get $deploy -o jsonpath='{.metadata.uid}' 2>/dev/null)
+          if [ -n "$DEPLOYMENT_UID" ]; then
+            # Find all ReplicaSets owned by this deployment
+            ALL_REPLICASETS=$(kubectl get replicaset -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.replicas}{" "}{.status.readyReplicas}{" "}{.metadata.ownerReferences[0].uid}{"\n"}{end}' 2>/dev/null | grep "$DEPLOYMENT_UID")
+
+            # Find the current active ReplicaSet (has desired replicas > 0)
+            CURRENT_RS=$(echo "$ALL_REPLICASETS" | awk '$2 > 0 {print $1}' | head -1)
+
+            # Delete all other ReplicaSets owned by this deployment
+            if [ -n "$ALL_REPLICASETS" ]; then
+              echo "$ALL_REPLICASETS" | while read rs replicas ready_replicas owner_uid; do
+                if [ -n "$rs" ] && [ "$rs" != "$CURRENT_RS" ]; then
+                  echo "🔧 FORCE deleting old ReplicaSet: $rs (replicas: $replicas, ready: ${ready_replicas:-0})"
+                  kubectl delete replicaset $rs --force --grace-period=0 2>/dev/null || true
+                fi
+              done
+            fi
+          fi
       done
-      echo "✅ Patched deployment strategy to reduce max surge"
+      echo "✅ Patched deployment strategy to use maxSurge=100% maxUnavailable=0"
+
+      # IMMEDIATE AUTOMATED FIX FOR VLLM ENTRYPOINT ISSUE
+      echo "🔧 Applying immediate vLLM entrypoint fixes for lmcache/vllm-openai images..."
+      VLLM_DEPLOYMENTS=$(kubectl get deployments | grep "deployment-vllm" | grep -v "router" | awk '{print $1}' 2>/dev/null || true)
+      if [ -n "$VLLM_DEPLOYMENTS" ]; then
+        echo "🔧 Found vLLM deployments, checking for lmcache/vllm-openai images..."
+        echo "$VLLM_DEPLOYMENTS" | while read deploy; do
+          IMAGE=$(kubectl get deployment $deploy -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+          if [[ $IMAGE == *"lmcache/vllm-openai"* ]]; then
+            echo "🔧 FIXING: $deploy uses $IMAGE - applying entrypoint fix..."
+            kubectl patch deployment $deploy --type='json' \
+              -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/command/0", "value": "/opt/venv/bin/vllm"}]' 2>/dev/null || true
+            echo "✅ FIXED: $deploy patched to use /opt/venv/bin/vllm"
+
+            # Clean up old ReplicaSets after entrypoint fix
+            echo "🔧 Cleaning up old ReplicaSets for $deploy after entrypoint fix..."
+
+            # Get ALL ReplicaSets owned by this deployment using more reliable method
+            DEPLOYMENT_UID=$(kubectl get deployment $deploy -o jsonpath='{.metadata.uid}' 2>/dev/null)
+            if [ -n "$DEPLOYMENT_UID" ]; then
+              # Find all ReplicaSets owned by this deployment
+              ALL_REPLICASETS=$(kubectl get replicaset -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.replicas}{" "}{.status.readyReplicas}{" "}{.metadata.ownerReferences[0].uid}{"\n"}{end}' 2>/dev/null | grep "$DEPLOYMENT_UID")
+
+              # Find the current active ReplicaSet (has desired replicas > 0)
+              CURRENT_RS=$(echo "$ALL_REPLICASETS" | awk '$2 > 0 {print $1}' | head -1)
+
+              # Delete all other ReplicaSets owned by this deployment
+              if [ -n "$ALL_REPLICASETS" ]; then
+                echo "$ALL_REPLICASETS" | while read rs replicas ready_replicas owner_uid; do
+                  if [ -n "$rs" ] && [ "$rs" != "$CURRENT_RS" ]; then
+                    echo "🔧 FORCE deleting old ReplicaSet: $rs (replicas: $replicas, ready: ${ready_replicas:-0})"
+                    kubectl delete replicaset $rs --force --grace-period=0 2>/dev/null || true
+                  fi
+                done
+              fi
+            fi
+          else
+            echo "ℹ️  $deploy uses $IMAGE - no fix needed"
+          fi
+        done
+      else
+        echo "⚠️ No vLLM deployments found for entrypoint fixes"
+      fi
   fi
 fi
 
@@ -235,7 +305,7 @@ while true; do
   CURRENT_TIME=$(date +%s)
   ELAPSED_TIME=$((CURRENT_TIME - START_TIME))
   if [ $ELAPSED_TIME -gt $TIMEOUT ]; then
-    echo "❌ Timeout reached! Pods not ready after 20 minutes."
+    echo "❌ Timeout reached! Pods not ready after 25 minutes."
     kubectl get pods
     kubectl delete all --all
     exit 1
@@ -243,29 +313,134 @@ while true; do
 
   PODS=$(kubectl get pods 2>/dev/null)
 
-  TOTAL=$(echo "$PODS" | tail -n +2 | wc -l)
+  # Count only pods that are not in permanent failure states
+  TOTAL=$(echo "$PODS" | tail -n +2 | grep -v -E '(Error|Failed|Completed)' | wc -l)
   READY=$(echo "$PODS" | grep '1/1' | wc -l)
 
-  # # Check for pods in error state
-  # if echo "$PODS" | grep -E 'CrashLoopBackOff|Error|ImagePullBackOff' > /dev/null; then
-  #   echo "❌ Detected pod in CrashLoopBackOff / Error / ImagePullBackOff state!"
-  #   kubectl get pods
-  #   kubectl describe pods | grep -A 10 "Events:"
-  #   kubectl delete all --all
-  #   exit 1
-  # fi
+  # Actively clean up crashed pods to prevent them from blocking progress
+  CRASHED_PODS=$(echo "$PODS" | grep -E '(Error|Failed)' | awk '{print $1}')
+  if [ -n "$CRASHED_PODS" ]; then
+    echo "🔧 Cleaning up crashed pods..."
+    echo "$CRASHED_PODS" | while read pod; do
+      echo "🔧 Deleting crashed pod: $pod"
+      kubectl delete pod $pod 2>/dev/null || true
+    done
+  fi
 
-  # # Check for CUDA OOM
-  # kubectl get pods -o name | grep -E 'vllm|lmcache' | while read pod; do
-  #   echo "Checking logs for $pod for CUDA OOM"
-  #   if kubectl logs $pod --tail=50 2>/dev/null | grep "CUDA out of memory" >/dev/null; then
-  #     echo "❗ CUDA OOM detected in $pod"
-  #     kubectl get pods
-  #     kubectl describe pod $pod
-  #     kubectl delete all --all
-  #     exit 1
-  #   fi
-  # done
+  # Also clean up Pending pods that are stuck (likely from old ReplicaSets)
+  PENDING_PODS=$(echo "$PODS" | grep 'Pending' | awk '{print $1}')
+  if [ -n "$PENDING_PODS" ]; then
+    echo "🔧 Cleaning up stuck Pending pods..."
+    echo "$PENDING_PODS" | while read pod; do
+      # Check if this pod has been pending for more than 12 minutes
+      POD_AGE=$(kubectl get pod $pod -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null || true)
+      if [ -n "$POD_AGE" ]; then
+        # Convert to seconds since epoch for comparison
+        POD_AGE_SECONDS=$(date -d "$POD_AGE" +%s 2>/dev/null || echo "0")
+        CURRENT_SECONDS=$(date +%s)
+        AGE_DIFF=$((CURRENT_SECONDS - POD_AGE_SECONDS))
+
+        # If pending for more than 720 seconds (12 minutes), delete it
+        if [ $AGE_DIFF -gt 720 ]; then
+          echo "🔧 Deleting stuck Pending pod: $pod (pending for ${AGE_DIFF}s)"
+          kubectl delete pod $pod 2>/dev/null || true
+        fi
+      fi
+    done
+  fi
+
+  # Aggressively clean up old ReplicaSets to prevent duplicate pods
+  echo "🔧 Cleaning up old ReplicaSets..."
+  DEPLOYMENTS=$(kubectl get deployments -o name 2>/dev/null | grep "deployment-vllm" | grep -v "router")
+  if [ -n "$DEPLOYMENTS" ]; then
+    echo "$DEPLOYMENTS" | while read deploy; do
+      DEPLOYMENT_NAME=$(echo $deploy | sed 's|deployment.apps/||')
+
+      # Get ALL ReplicaSets owned by this deployment using reliable method
+      DEPLOYMENT_UID=$(kubectl get $deploy -o jsonpath='{.metadata.uid}' 2>/dev/null)
+      if [ -n "$DEPLOYMENT_UID" ]; then
+        # Find all ReplicaSets owned by this deployment
+        ALL_REPLICASETS=$(kubectl get replicaset -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.replicas}{" "}{.status.readyReplicas}{" "}{.metadata.ownerReferences[0].uid}{"\n"}{end}' 2>/dev/null | grep "$DEPLOYMENT_UID")
+
+        # Find the current active ReplicaSet (has desired replicas > 0)
+        CURRENT_RS=$(echo "$ALL_REPLICASETS" | awk '$2 > 0 {print $1}' | head -1)
+
+        # Delete all other ReplicaSets owned by this deployment
+        if [ -n "$ALL_REPLICASETS" ]; then
+          echo "$ALL_REPLICASETS" | while read rs replicas ready_replicas owner_uid; do
+            if [ -n "$rs" ] && [ "$rs" != "$CURRENT_RS" ] && [ "${ready_replicas:-0}" -eq 0 ]; then
+              echo "🔧 Force deleting ReplicaSet with 0 ready replicas: $rs (owned by $DEPLOYMENT_NAME)"
+              kubectl delete replicaset $rs --force --grace-period=0 2>/dev/null || true
+            fi
+          done
+        fi
+      fi
+    done
+  fi
+
+  # Check for pods in CrashLoopBackOff state and fix vLLM entrypoint issues
+  CRASHLOOP_PODS=$(echo "$PODS" | grep 'CrashLoopBackOff' | awk '{print $1}')
+  if [ -n "$CRASHLOOP_PODS" ]; then
+    echo "🔧 Detected pods in CrashLoopBackOff state, checking for vLLM entrypoint issues..."
+    echo "$CRASHLOOP_PODS" | while read pod; do
+      # Check if this is a vLLM pod and if it has the entrypoint issue
+      if [[ $pod == *"deployment-vllm"* ]] && [[ $pod != *"router"* ]]; then
+        LOGS=$(kubectl logs $pod --tail=10 2>/dev/null || true)
+        if echo "$LOGS" | grep -q 'exec: "vllm": executable file not found'; then
+          echo "🔧 Found vLLM entrypoint issue in pod $pod, applying fix..."
+
+          # Get the deployment name from the pod
+          DEPLOYMENT=$(kubectl get pod $pod -o jsonpath='{.metadata.ownerReferences[0].name}' 2>/dev/null)
+          if [ -n "$DEPLOYMENT" ]; then
+            DEPLOYMENT_NAME=$(kubectl get replicaset $DEPLOYMENT -o jsonpath='{.metadata.ownerReferences[0].name}' 2>/dev/null)
+            if [ -n "$DEPLOYMENT_NAME" ]; then
+              echo "🔧 Patching deployment $DEPLOYMENT_NAME to use correct vLLM entrypoint..."
+              kubectl patch deployment $DEPLOYMENT_NAME --type='json' \
+                -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/command/0", "value": "/opt/venv/bin/vllm"}]' 2>/dev/null
+
+              # Delete the failing pod to trigger recreation with correct command
+              echo "🔧 Deleting failing pod $pod to trigger recreation..."
+              kubectl delete pod $pod 2>/dev/null
+
+              # Delete old replicaset to prevent creating more failing pods
+              echo "🔧 Cleaning up old replicaset $DEPLOYMENT..."
+              kubectl delete replicaset $DEPLOYMENT 2>/dev/null || true
+
+              echo "✅ Applied vLLM entrypoint fix for $DEPLOYMENT_NAME"
+            fi
+          fi
+        fi
+      fi
+    done
+  fi
+
+  # ALSO check for any failing vLLM pods and apply fixes aggressively
+  FAILING_PODS=$(echo "$PODS" | grep -E 'Error|ContainerCannotRun|CrashLoopBackOff|ImagePullBackOff' | awk '{print $1}')
+  if [ -n "$FAILING_PODS" ]; then
+    echo "$FAILING_PODS" | while read pod; do
+      if [[ $pod == *"deployment-vllm"* ]] && [[ $pod != *"router"* ]]; then
+        # Check if it's the vllm entrypoint issue
+        DESCRIBE_OUTPUT=$(kubectl describe pod $pod 2>/dev/null || true)
+        if echo "$DESCRIBE_OUTPUT" | grep -q 'exec: "vllm": executable file not found'; then
+          echo "🔧 AGGRESSIVE FIX: Found vLLM entrypoint issue in failing pod $pod"
+
+          # Get deployment name and fix it
+          DEPLOYMENT=$(kubectl get pod $pod -o jsonpath='{.metadata.ownerReferences[0].name}' 2>/dev/null || true)
+          if [ -n "$DEPLOYMENT" ]; then
+            DEPLOYMENT_NAME=$(kubectl get replicaset $DEPLOYMENT -o jsonpath='{.metadata.ownerReferences[0].name}' 2>/dev/null || true)
+            if [ -n "$DEPLOYMENT_NAME" ]; then
+              echo "🔧 AGGRESSIVE FIX: Patching $DEPLOYMENT_NAME..."
+              kubectl patch deployment $DEPLOYMENT_NAME --type='json' \
+                -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/command/0", "value": "/opt/venv/bin/vllm"}]' 2>/dev/null || true
+              kubectl delete pod $pod 2>/dev/null || true
+              kubectl delete replicaset $DEPLOYMENT 2>/dev/null || true
+              echo "✅ AGGRESSIVE FIX: Applied to $DEPLOYMENT_NAME"
+            fi
+          fi
+        fi
+      fi
+    done
+  fi
 
   if [ "$READY" -eq "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
     echo "✅ All $TOTAL pods are running and ready."

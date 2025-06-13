@@ -180,12 +180,28 @@ if [ -n "$VLLM_DEPLOYMENTS" ]; then
           -p '{"spec": {"strategy": {"rollingUpdate": {"maxSurge": "100%", "maxUnavailable": 0}}}}'
       echo "✅ Updated deployment strategy for $deploy"
 
-      OLD_REPLICASETS=$(kubectl get replicaset -l app=$deploy 2>/dev/null | awk 'NR>1 && $2==0 {print $1}' || true)
-      if [ -n "$OLD_REPLICASETS" ]; then
-        echo "$OLD_REPLICASETS" | while read rs; do
-          echo "🔧 Deleting old ReplicaSet: $rs"
-          kubectl delete replicaset $rs 2>/dev/null || true
-        done
+      # IMMEDIATE aggressive cleanup of old ReplicaSets after patch
+      sleep 2  # Give K8s a moment to process the patch
+      echo "🔧 IMMEDIATE cleanup of old ReplicaSets for $deploy..."
+
+      # Get ALL ReplicaSets owned by this deployment using more reliable method
+      DEPLOYMENT_UID=$(kubectl get deployment $deploy -o jsonpath='{.metadata.uid}' 2>/dev/null)
+      if [ -n "$DEPLOYMENT_UID" ]; then
+        # Find all ReplicaSets owned by this deployment
+        ALL_REPLICASETS=$(kubectl get replicaset -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.replicas}{" "}{.status.readyReplicas}{" "}{.metadata.ownerReferences[0].uid}{"\n"}{end}' 2>/dev/null | grep "$DEPLOYMENT_UID")
+
+        # Find the current active ReplicaSet (has desired replicas > 0)
+        CURRENT_RS=$(echo "$ALL_REPLICASETS" | awk '$2 > 0 {print $1}' | head -1)
+
+        # Delete all other ReplicaSets owned by this deployment
+        if [ -n "$ALL_REPLICASETS" ]; then
+          echo "$ALL_REPLICASETS" | while read rs replicas ready_replicas owner_uid; do
+            if [ -n "$rs" ] && [ "$rs" != "$CURRENT_RS" ]; then
+              echo "🔧 FORCE deleting old ReplicaSet: $rs (replicas: $replicas, ready: ${ready_replicas:-0})"
+              kubectl delete replicaset $rs --force --grace-period=0 2>/dev/null || true
+            fi
+          done
+        fi
       fi
     else
       echo "ℹ️  $deploy uses $IMAGE - no fix needed"
@@ -299,12 +315,28 @@ else
                       -p '{"spec": {"strategy": {"rollingUpdate": {"maxSurge": "100%", "maxUnavailable": 0}}}}'
                   echo "✅ Updated deployment strategy for $DEPLOYMENT_NAME"
 
-                  OLD_REPLICASETS=$(kubectl get replicaset -l app=$DEPLOYMENT_NAME 2>/dev/null | awk 'NR>1 && $2==0 {print $1}' || true)
-                  if [ -n "$OLD_REPLICASETS" ]; then
-                    echo "$OLD_REPLICASETS" | while read rs; do
-                      echo "🔧 Deleting old ReplicaSet: $rs"
-                      kubectl delete replicaset $rs 2>/dev/null || true
-                    done
+                  # IMMEDIATE aggressive cleanup of old ReplicaSets after patch
+                  sleep 2  # Give K8s a moment to process the patch
+                  echo "🔧 IMMEDIATE cleanup of old ReplicaSets for $DEPLOYMENT_NAME..."
+
+                  # Get ALL ReplicaSets owned by this deployment using more reliable method
+                  DEPLOYMENT_UID=$(kubectl get deployment $deploy -o jsonpath='{.metadata.uid}' 2>/dev/null)
+                  if [ -n "$DEPLOYMENT_UID" ]; then
+                    # Find all ReplicaSets owned by this deployment
+                    ALL_REPLICASETS=$(kubectl get replicaset -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.replicas}{" "}{.status.readyReplicas}{" "}{.metadata.ownerReferences[0].uid}{"\n"}{end}' 2>/dev/null | grep "$DEPLOYMENT_UID")
+
+                    # Find the current active ReplicaSet (has desired replicas > 0)
+                    CURRENT_RS=$(echo "$ALL_REPLICASETS" | awk '$2 > 0 {print $1}' | head -1)
+
+                    # Delete all other ReplicaSets owned by this deployment
+                    if [ -n "$ALL_REPLICASETS" ]; then
+                      echo "$ALL_REPLICASETS" | while read rs replicas ready_replicas owner_uid; do
+                        if [ -n "$rs" ] && [ "$rs" != "$CURRENT_RS" ]; then
+                          echo "🔧 FORCE deleting old ReplicaSet: $rs (replicas: $replicas, ready: ${ready_replicas:-0})"
+                          kubectl delete replicaset $rs --force --grace-period=0 2>/dev/null || true
+                        fi
+                      done
+                    fi
                   fi
               fi
           done
@@ -346,6 +378,57 @@ while true; do
     echo "$CRASHED_PODS" | while read pod; do
       echo "🔧 Deleting crashed pod: $pod"
       kubectl delete pod $pod 2>/dev/null || true
+    done
+  fi
+
+  # Also clean up Pending pods that are stuck (likely from old ReplicaSets)
+  PENDING_PODS=$(echo "$PODS" | grep 'Pending' | awk '{print $1}')
+  if [ -n "$PENDING_PODS" ]; then
+    echo "🔧 Cleaning up stuck Pending pods..."
+    echo "$PENDING_PODS" | while read pod; do
+      # Check if this pod has been pending for more than 12 minutes
+      POD_AGE=$(kubectl get pod $pod -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null || true)
+      if [ -n "$POD_AGE" ]; then
+        # Convert to seconds since epoch for comparison
+        POD_AGE_SECONDS=$(date -d "$POD_AGE" +%s 2>/dev/null || echo "0")
+        CURRENT_SECONDS=$(date +%s)
+        AGE_DIFF=$((CURRENT_SECONDS - POD_AGE_SECONDS))
+
+        # If pending for more than 720 seconds (12 minutes), delete it
+        if [ $AGE_DIFF -gt 720 ]; then
+          echo "🔧 Deleting stuck Pending pod: $pod (pending for ${AGE_DIFF}s)"
+          kubectl delete pod $pod 2>/dev/null || true
+        fi
+      fi
+    done
+  fi
+
+  # Aggressively clean up old ReplicaSets to prevent duplicate pods
+  echo "🔧 Cleaning up old ReplicaSets..."
+  DEPLOYMENTS=$(kubectl get deployments -o name 2>/dev/null | grep "deployment-vllm" | grep -v "router")
+  if [ -n "$DEPLOYMENTS" ]; then
+    echo "$DEPLOYMENTS" | while read deploy; do
+      DEPLOYMENT_NAME=$(echo $deploy | sed 's|deployment.apps/||')
+
+      # Get ALL ReplicaSets owned by this deployment using reliable method
+      DEPLOYMENT_UID=$(kubectl get $deploy -o jsonpath='{.metadata.uid}' 2>/dev/null)
+      if [ -n "$DEPLOYMENT_UID" ]; then
+        # Find all ReplicaSets owned by this deployment
+        ALL_REPLICASETS=$(kubectl get replicaset -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.replicas}{" "}{.status.readyReplicas}{" "}{.metadata.ownerReferences[0].uid}{"\n"}{end}' 2>/dev/null | grep "$DEPLOYMENT_UID")
+
+        # Find the current active ReplicaSet (has desired replicas > 0)
+        CURRENT_RS=$(echo "$ALL_REPLICASETS" | awk '$2 > 0 {print $1}' | head -1)
+
+        # Delete all other ReplicaSets owned by this deployment
+        if [ -n "$ALL_REPLICASETS" ]; then
+          echo "$ALL_REPLICASETS" | while read rs replicas ready_replicas owner_uid; do
+            if [ -n "$rs" ] && [ "$rs" != "$CURRENT_RS" ] && [ "${ready_replicas:-0}" -eq 0 ]; then
+              echo "🔧 Force deleting ReplicaSet with 0 ready replicas: $rs (owned by $DEPLOYMENT_NAME)"
+              kubectl delete replicaset $rs --force --grace-period=0 2>/dev/null || true
+            fi
+          done
+        fi
+      fi
     done
   fi
 
