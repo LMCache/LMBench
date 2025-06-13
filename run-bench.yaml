@@ -11,8 +11,8 @@
   # - single-debug/llmd-basic-spec.yaml
 
 1-infrastructure:
-  Location: LocalMinikube
+  # Location: LocalMinikube
   # Location: NoBench
-  # Location: LMCacheGKE
-  # numClusterGPUs: 1
-  # A100_VRAM: 40
+  Location: LMCacheGKE
+  numClusterGPUs: 1
+  A100_VRAM: 40
