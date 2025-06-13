@@ -15,7 +15,7 @@ servingEngineSpec:
     vllmConfig:
       v1: 1
       enablePrefixCaching: true
-      maxModelLen: 32000
+      maxModelLen: 30000
       dtype: "bfloat16"
       gpuMemoryUtilization: "0.95" # new for v1
       extraArgs: ["--disable-log-requests", "--swap-space", 0]
