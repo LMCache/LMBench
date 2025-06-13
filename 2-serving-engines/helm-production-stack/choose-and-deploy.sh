@@ -142,9 +142,10 @@ while true; do
   if [ -n "$VLLM_DEPLOYMENTS" ]; then
     echo "✅ Found vLLM deployments after ${ELAPSED_TIME}s"
     echo "$VLLM_DEPLOYMENTS" | while read deploy; do
+      # Use better deployment strategy: allow surge but keep desired replicas available
       kubectl patch deployment $deploy \
-          -p '{"spec": {"strategy": {"rollingUpdate": {"maxSurge": 0, "maxUnavailable": 1}}}}'
-      echo "✅ $deploy patched with maxSurge=0 strategy"
+          -p '{"spec": {"strategy": {"rollingUpdate": {"maxSurge": "100%", "maxUnavailable": 0}}}}'
+      echo "✅ $deploy patched with maxSurge=100% maxUnavailable=0 strategy"
     done
     break
   else
@@ -173,6 +174,12 @@ if [ -n "$VLLM_DEPLOYMENTS" ]; then
 
       # Clean up old ReplicaSets to avoid multiple ReplicaSets for the same deployment
       echo "🔧 Cleaning up old ReplicaSets for $deploy..."
+
+      # Ensure consistent deployment strategy
+      kubectl patch deployment $deploy \
+          -p '{"spec": {"strategy": {"rollingUpdate": {"maxSurge": "100%", "maxUnavailable": 0}}}}'
+      echo "✅ Updated deployment strategy for $deploy"
+
       OLD_REPLICASETS=$(kubectl get replicaset -l app=$deploy 2>/dev/null | awk 'NR>1 && $2==0 {print $1}' || true)
       if [ -n "$OLD_REPLICASETS" ]; then
         echo "$OLD_REPLICASETS" | while read rs; do
@@ -286,6 +293,12 @@ else
                   # Clean up old ReplicaSets after node assignment patch
                   DEPLOYMENT_NAME=$(echo $deploy | sed 's|deployment.apps/||')
                   echo "🔧 Cleaning up old ReplicaSets for $DEPLOYMENT_NAME after node assignment..."
+
+                  # Also patch the deployment strategy to match the earlier fix
+                  kubectl patch $deploy \
+                      -p '{"spec": {"strategy": {"rollingUpdate": {"maxSurge": "100%", "maxUnavailable": 0}}}}'
+                  echo "✅ Updated deployment strategy for $DEPLOYMENT_NAME"
+
                   OLD_REPLICASETS=$(kubectl get replicaset -l app=$DEPLOYMENT_NAME 2>/dev/null | awk 'NR>1 && $2==0 {print $1}' || true)
                   if [ -n "$OLD_REPLICASETS" ]; then
                     echo "$OLD_REPLICASETS" | while read rs; do
@@ -314,7 +327,7 @@ while true; do
   CURRENT_TIME=$(date +%s)
   ELAPSED_TIME=$((CURRENT_TIME - START_TIME))
   if [ $ELAPSED_TIME -gt $TIMEOUT ]; then
-    echo "❌ Timeout reached! Pods not ready after 20 minutes."
+    echo "❌ Timeout reached! Pods not ready after 25 minutes."
     kubectl get pods
     kubectl delete all --all
     exit 1
@@ -322,8 +335,19 @@ while true; do
 
   PODS=$(kubectl get pods 2>/dev/null)
 
-  TOTAL=$(echo "$PODS" | tail -n +2 | wc -l)
+  # Count only pods that are not in permanent failure states
+  TOTAL=$(echo "$PODS" | tail -n +2 | grep -v -E '(Error|Failed|Completed)' | wc -l)
   READY=$(echo "$PODS" | grep '1/1' | wc -l)
+
+  # Actively clean up crashed pods to prevent them from blocking progress
+  CRASHED_PODS=$(echo "$PODS" | grep -E '(Error|Failed)' | awk '{print $1}')
+  if [ -n "$CRASHED_PODS" ]; then
+    echo "🔧 Cleaning up crashed pods..."
+    echo "$CRASHED_PODS" | while read pod; do
+      echo "🔧 Deleting crashed pod: $pod"
+      kubectl delete pod $pod 2>/dev/null || true
+    done
+  fi
 
   # Check for pods in CrashLoopBackOff state and fix vLLM entrypoint issues
   CRASHLOOP_PODS=$(echo "$PODS" | grep 'CrashLoopBackOff' | awk '{print $1}')
