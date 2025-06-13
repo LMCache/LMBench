@@ -7,7 +7,7 @@
   # - routing/8-spec.yaml
   # - daily/4-llama8B/prodstack.yaml
   - layerwise/layerwise-random-spec.yaml
-  - layerwise/layerwise-synthetic-spec.yaml
+  # - layerwise/layerwise-synthetic-spec.yaml
   # - single-debug/llmd-basic-spec.yaml
 
 1-infrastructure:
