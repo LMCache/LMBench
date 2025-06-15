@@ -72,8 +72,9 @@ def ProcessSummary(
         median_tpot = tpot.median()
         p99_tpot = np.percentile(tpot, 99)
 
-        # Inter-token Latency
-        df['itl'] = (df['generation_time'] / df['generation_tokens']) * 1000
+        # Inter-token Latency (including TTFT - total time divided by all tokens)
+        # ITL should include the time to first token, representing average time per token overall
+        df['itl'] = ((df['ttft'] + df['generation_time']) / df['generation_tokens']) * 1000
         itl = df['itl'].replace([float('inf'), -float('inf'), np.nan], np.nan).dropna()
         mean_itl = itl.mean()
         median_itl = itl.median()

@@ -40,7 +40,7 @@ Workload:
       NUM_USERS: 100
       NUM_ROUNDS: 20
       SYSTEM_PROMPT: 1000
-      CHAT_HISTORY: 20000
+      CHAT_HISTORY: 18000
       ANSWER_LEN: 100
       QPS: [4, 5, 6, 7, 8]
       USE_SHAREGPT: false
