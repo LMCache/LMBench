@@ -32,5 +32,5 @@ Workload:
       SYSTEM_PROMPT: 1000
       CHAT_HISTORY: 20000
       ANSWER_LEN: 100
-      QPS: [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]
+      QPS: [0.5, 1, 1.5, 2]
       USE_SHAREGPT: false
