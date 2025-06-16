@@ -8,6 +8,10 @@ Name: layerwise-kv-transfer-benchmarks
 
 Serving:
   - Helm-ProductionStack:
+      helmConfigSelection: layerwise/vllm-only.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+  - Helm-ProductionStack:
       helmConfigSelection: layerwise/w.yaml
       hf_token: <YOUR_HF_TOKEN>
       modelURL: meta-llama/Llama-3.1-8B-Instruct
