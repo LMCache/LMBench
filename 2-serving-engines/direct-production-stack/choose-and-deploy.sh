@@ -280,7 +280,7 @@ else
 
       # IMMEDIATE AUTOMATED FIX FOR VLLM ENTRYPOINT ISSUE
       echo "[FIX] Applying immediate vLLM entrypoint fixes for lmcache/vllm-openai images..."
-      VLLM_DEPLOYMENTS=$(kubectl get deployments | grep "deployment-vllm" | grep -v "router" | awk '{print $1}' 2>/dev/null || true)
+      VLLM_DEPLOYMENTS=$(kubectl get deployments | grep -E ".*deployment-vllm|.*vllm.*deployment" | grep -v "router" | awk '{print $1}' 2>/dev/null || true)
       if [ -n "$VLLM_DEPLOYMENTS" ]; then
         echo "[FIX] Found vLLM deployments, checking for lmcache/vllm-openai images..."
         echo "$VLLM_DEPLOYMENTS" | while read deploy; do
@@ -367,7 +367,7 @@ while true; do
 
   # Aggressively clean up old ReplicaSets to prevent duplicate pods
   echo "[FIX] Cleaning up old ReplicaSets..."
-  DEPLOYMENTS=$(kubectl get deployments -o name 2>/dev/null | grep "deployment-vllm" | grep -v "router")
+  DEPLOYMENTS=$(kubectl get deployments -o name 2>/dev/null | grep -E ".*deployment-vllm|.*vllm.*deployment" | grep -v "router")
   if [ -n "$DEPLOYMENTS" ]; then
     echo "$DEPLOYMENTS" | while read deploy; do
       DEPLOYMENT_NAME=$(echo $deploy | sed 's|deployment.apps/||')
@@ -388,7 +388,7 @@ while true; do
     echo "[FIX] Detected pods in CrashLoopBackOff state, checking for vLLM entrypoint issues..."
     echo "$CRASHLOOP_PODS" | while read pod; do
       # Check if this is a vLLM pod and if it has the entrypoint issue
-      if [[ $pod == *"deployment-vllm"* ]] && [[ $pod != *"router"* ]]; then
+      if [[ $pod =~ .*vllm.*deployment|.*deployment.*vllm ]] && [[ $pod != *"router"* ]]; then
         LOGS=$(kubectl logs $pod --tail=10 2>/dev/null || true)
         if echo "$LOGS" | grep -q 'exec: "vllm": executable file not found'; then
           echo "[FIX] Found vLLM entrypoint issue in pod $pod, applying fix..."
@@ -422,7 +422,7 @@ while true; do
   FAILING_PODS=$(echo "$PODS" | grep -E 'Error|ContainerCannotRun|CrashLoopBackOff|ImagePullBackOff' | awk '{print $1}')
   if [ -n "$FAILING_PODS" ]; then
     echo "$FAILING_PODS" | while read pod; do
-      if [[ $pod == *"deployment-vllm"* ]] && [[ $pod != *"router"* ]]; then
+      if [[ $pod =~ .*vllm.*deployment|.*deployment.*vllm ]] && [[ $pod != *"router"* ]]; then
         # Check if it's the vllm entrypoint issue
         DESCRIBE_OUTPUT=$(kubectl describe pod $pod 2>/dev/null || true)
         if echo "$DESCRIBE_OUTPUT" | grep -q 'exec: "vllm": executable file not found'; then
