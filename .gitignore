@@ -11,6 +11,10 @@ __pycache__/
 4-latest-results/**/*.png
 **/production-stack
 
+# Logging files
+**/*.log
+**/*.txt
+
 # Distribution / packaging
 .Python
 build/
