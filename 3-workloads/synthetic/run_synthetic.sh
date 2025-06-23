@@ -80,12 +80,10 @@ collect_pod_logs() {
 }
 
 warmup() {
-    local qps=$1
-    echo "Warming up with QPS=$qps..."
     python3 "${SCRIPT_DIR}/multi-round-qa.py" \
-        --num-users "$NUM_USERS_WARMUP" \
-        --num-rounds "$NUM_ROUNDS" \
-        --qps "$QPS_VALUES" \
+        --num-users "1"" \
+        --num-rounds "2" \
+        --qps "2" \
         --shared-system-prompt "$SYSTEM_PROMPT" \
         --user-history-prompt "$CHAT_HISTORY" \
         --answer-len $ANSWER_LEN \
