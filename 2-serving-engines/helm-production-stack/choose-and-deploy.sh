@@ -163,9 +163,12 @@ while true; do
           break
         fi
         
-        # Check rollout status
-        if kubectl rollout status deployment/$deploy --timeout=1s >/dev/null 2>&1; then
-          echo "[OK] Rollout completed for $deploy"
+        # Check if pods are actually ready (more reliable than rollout status)
+        READY_PODS=$(kubectl get pods -l app=$deploy --no-headers 2>/dev/null | awk '$2=="1/1" && $3=="Running"' | wc -l)
+        TOTAL_PODS=$(kubectl get pods -l app=$deploy --no-headers 2>/dev/null | wc -l)
+        
+        if [ "$READY_PODS" -gt 0 ] && [ "$READY_PODS" -eq "$TOTAL_PODS" ]; then
+          echo "[OK] Rollout completed for $deploy - all $READY_PODS/$TOTAL_PODS pods ready"
           break
         fi
         
@@ -273,8 +276,22 @@ else
   # PATCHING DEPLOYMENTS TO USE APPROPRIATE NODE POOLS
   echo "Assigning deployments to node pools based on type..."
 
-  # Give kubernetes a moment to create the resources
-  sleep 5
+  # First ensure all pods are ready before doing node assignments to avoid unnecessary rollouts
+  echo "Checking if all pods are ready before node assignments..."
+  ALL_READY=true
+  VLLM_PODS=$(kubectl get pods -l helm-release-name=vllm --no-headers 2>/dev/null || true)
+  if [ -n "$VLLM_PODS" ]; then
+    NOT_READY=$(echo "$VLLM_PODS" | awk '$2!="1/1" || $3!="Running"' | wc -l)
+    if [ "$NOT_READY" -gt 0 ]; then
+      ALL_READY=false
+      echo "[WARN] $NOT_READY pods not ready yet, skipping node assignments to avoid unnecessary rollouts"
+    fi
+  fi
+
+  if [ "$ALL_READY" = true ]; then
+    echo "[OK] All pods ready, proceeding with node assignments"
+    # Give kubernetes a moment to create the resources
+    sleep 5
 
   # Function to check if a node pool has sufficient resources
   check_node_resources() {
@@ -296,11 +313,12 @@ else
       local node_cpu=$(echo $line | awk '{print $1}')
       local node_memory=$(echo $line | awk '{print $2}')
 
-      # Convert memory strings to comparable values (Gi)
-      local node_memory_gi=$(echo $node_memory | sed 's/Ki$/\/1048576/g; s/Mi$/\/1024/g; s/Gi$//g; s/Ti$/\*1024/g' | bc -l)
-      local req_memory_gi=$(echo $memory_request | sed 's/G$//g; s/Gi$//g')
+      # Convert memory strings to comparable values (Gi) - fix bc syntax error
+      local node_memory_gi=$(echo $node_memory | sed 's/Ki$/\/1048576/g; s/Mi$/\/1024/g; s/Gi$//g; s/Ti$/\*1024/g' | bc -l 2>/dev/null || echo "0")
+      local req_memory_gi=$(echo $memory_request | sed 's/G$//g; s/Gi$//g' | bc -l 2>/dev/null || echo "0")
 
-      if (( $(echo "$node_cpu >= $cpu_request" | bc -l) )) && (( $(echo "$node_memory_gi >= $req_memory_gi" | bc -l) )); then
+      # Use awk for safer numeric comparisons instead of bc
+      if awk "BEGIN {exit !($node_cpu >= $cpu_request)}" 2>/dev/null && awk "BEGIN {exit !($node_memory_gi >= $req_memory_gi)}" 2>/dev/null; then
         has_capacity=true
         break
       fi
@@ -428,6 +446,10 @@ else
       fi
   else
       echo "[WARN] Error getting deployments list"
+  fi
+  
+  else
+    echo "[INFO] Skipping node assignments - waiting for pods to be ready first"
   fi
 
 fi
