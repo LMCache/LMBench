@@ -81,7 +81,7 @@ collect_pod_logs() {
 
 warmup() {
     python3 "${SCRIPT_DIR}/multi-round-qa.py" \
-        --num-users "1"" \
+        --num-users "1" \
         --num-rounds "2" \
         --qps "2" \
         --shared-system-prompt "$SYSTEM_PROMPT" \
