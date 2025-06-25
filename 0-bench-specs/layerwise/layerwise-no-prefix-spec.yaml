@@ -1,0 +1,40 @@
+Name: layerwise-kv-transfer-benchmarks
+
+# Suggested Infrastructure (in run-bench.yaml)
+# 1-infrastructure:
+#   Location: LMCacheGKE
+#   numClusterGPUs: 1
+#   A100_VRAM: 40
+
+Serving:
+  - Helm-ProductionStack:
+      helmConfigSelection: layerwise/no-prefix/vllm-only.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+  - Helm-ProductionStack:
+      helmConfigSelection: layerwise/no-prefix/w.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+  - Helm-ProductionStack:
+      helmConfigSelection: layerwise/no-prefix/wo.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+
+
+Workload:
+  Random:
+    # long random prompts:
+    - NUM_USERS: 20
+      NUM_ROUNDS: 20
+      PROMPT_LEN: 2000
+      ANSWER_LEN: 100
+      QPS: [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]
+  LMCacheSynthetic:
+    - NUM_USERS_WARMUP: 10
+      NUM_USERS: 10
+      NUM_ROUNDS: 20
+      SYSTEM_PROMPT: 1000
+      CHAT_HISTORY: 20000
+      ANSWER_LEN: 100
+      QPS: [0.5, 1, 1.5, 2, 3]
+      USE_SHAREGPT: false

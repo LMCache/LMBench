@@ -164,29 +164,35 @@ while true; do
         fi
         
         # Check if pods are actually ready (more reliable than rollout status)
-        READY_PODS=$(kubectl get pods -l app=$deploy --no-headers 2>/dev/null | awk '$2=="1/1" && $3=="Running"' | wc -l)
-        TOTAL_PODS=$(kubectl get pods -l app=$deploy --no-headers 2>/dev/null | wc -l)
+        # Use a more general selector to catch all vllm-related pods
+        READY_PODS=$(kubectl get pods --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | awk '$2=="1/1" && $3=="Running"' | wc -l)
+        TOTAL_PODS=$(kubectl get pods --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | wc -l)
         
         if [ "$READY_PODS" -gt 0 ] && [ "$READY_PODS" -eq "$TOTAL_PODS" ]; then
           echo "[OK] Rollout completed for $deploy - all $READY_PODS/$TOTAL_PODS pods ready"
           break
         fi
         
-        # Show comprehensive pod status for observability
-        echo "[INFO] Rollout progress (${ROLLOUT_ELAPSED}s) - ALL PODS STATUS:"
-        ALL_PODS=$(kubectl get pods 2>/dev/null)
-        if [ -n "$ALL_PODS" ]; then
-          echo "$ALL_PODS"
+        # Check for persistent failures (CrashLoopBackOff, Error, ImagePullBackOff)
+        FAILED_PODS=$(kubectl get pods --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | awk '$3 ~ /CrashLoopBackOff|Error|ImagePullBackOff/' | wc -l)
+        if [ "$FAILED_PODS" -gt 0 ]; then
+          CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
+          echo "[WARN] Rollout progress (${ROLLOUT_ELAPSED}s): $FAILED_PODS pods in failure state (consecutive failures: $CONSECUTIVE_FAILURES/$MAX_CONSECUTIVE_FAILURES)"
           
-          # Summary counts
-          TOTAL_PODS=$(echo "$ALL_PODS" | tail -n +2 | wc -l)
-          READY_PODS=$(echo "$ALL_PODS" | grep -c " 1/1 " 2>/dev/null || echo "0")
-          RUNNING_PODS=$(echo "$ALL_PODS" | grep -c " Running " 2>/dev/null || echo "0")
-          echo "  SUMMARY: $READY_PODS/$TOTAL_PODS pods ready, $RUNNING_PODS running"
+          if [ $CONSECUTIVE_FAILURES -ge $MAX_CONSECUTIVE_FAILURES ]; then
+            echo "[ERROR] Persistent failures detected - $FAILED_PODS pods failing for $((CONSECUTIVE_FAILURES * 5)) seconds"
+            echo "[ERROR] Deployment $deploy appears to have a configuration issue. Last pod status:"
+            kubectl get pods
+            echo "[ERROR] Recent logs from failing pods:"
+            kubectl get pods --no-headers | grep -E "(vllm|deployment)" | awk '$3 ~ /CrashLoopBackOff|Error/' | head -1 | awk '{print $1}' | xargs -r kubectl logs --tail=10
+            break
+          fi
         else
-          echo "  No pods found"
+          CONSECUTIVE_FAILURES=0
         fi
-        echo "--- END POD STATUS ---"
+        
+        # Show current pod status for observability
+        echo "[INFO] Rollout progress (${ROLLOUT_ELAPSED}s): $(kubectl get pods --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | awk '{print $1 "=" $3}' | tr '\n' ' ') ($READY_PODS/$TOTAL_PODS ready)"
         sleep 5
       done
     done
@@ -226,9 +232,12 @@ if [ -n "$VLLM_DEPLOYMENTS" ]; then
       # Wait for rollout to complete before cleaning up old ReplicaSets with live progress
       echo "[WAIT] Waiting for rollout of $deploy to complete..."
       
-      # Monitor rollout progress with observability
+      # Monitor rollout progress with observability and failure detection
       ROLLOUT_TIMEOUT=600
       ROLLOUT_START=$(date +%s)
+      CONSECUTIVE_FAILURES=0
+      MAX_CONSECUTIVE_FAILURES=6  # 30 seconds of consecutive failures
+      
       while true; do
         ROLLOUT_CURRENT=$(date +%s)
         ROLLOUT_ELAPSED=$((ROLLOUT_CURRENT - ROLLOUT_START))
@@ -240,23 +249,42 @@ if [ -n "$VLLM_DEPLOYMENTS" ]; then
         fi
         
         # Check if pods are actually ready (more reliable than rollout status)
-        READY_PODS=$(kubectl get pods -l helm-release-name=vllm --no-headers 2>/dev/null | awk '$2=="1/1" && $3=="Running"' | wc -l)
-        TOTAL_PODS=$(kubectl get pods -l helm-release-name=vllm --no-headers 2>/dev/null | wc -l)
+        # Use a more general selector to catch all vllm-related pods
+        READY_PODS=$(kubectl get pods --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | awk '$2=="1/1" && $3=="Running"' | wc -l)
+        TOTAL_PODS=$(kubectl get pods --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | wc -l)
         
         if [ "$READY_PODS" -gt 0 ] && [ "$READY_PODS" -eq "$TOTAL_PODS" ]; then
           echo "[OK] Rollout completed for $deploy - all $READY_PODS/$TOTAL_PODS pods ready"
           break
         fi
         
+        # Check for persistent failures (CrashLoopBackOff, Error, ImagePullBackOff)
+        FAILED_PODS=$(kubectl get pods --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | awk '$3 ~ /CrashLoopBackOff|Error|ImagePullBackOff/' | wc -l)
+        if [ "$FAILED_PODS" -gt 0 ]; then
+          CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
+          echo "[WARN] Rollout progress (${ROLLOUT_ELAPSED}s): $FAILED_PODS pods in failure state (consecutive failures: $CONSECUTIVE_FAILURES/$MAX_CONSECUTIVE_FAILURES)"
+          
+          if [ $CONSECUTIVE_FAILURES -ge $MAX_CONSECUTIVE_FAILURES ]; then
+            echo "[ERROR] Persistent failures detected - $FAILED_PODS pods failing for $((CONSECUTIVE_FAILURES * 5)) seconds"
+            echo "[ERROR] Deployment $deploy appears to have a configuration issue. Last pod status:"
+            kubectl get pods
+            echo "[ERROR] Recent logs from failing pods:"
+            kubectl get pods --no-headers | grep -E "(vllm|deployment)" | awk '$3 ~ /CrashLoopBackOff|Error/' | head -1 | awk '{print $1}' | xargs -r kubectl logs --tail=10
+            break
+          fi
+        else
+          CONSECUTIVE_FAILURES=0
+        fi
+        
         # Show current pod status for observability
-        echo "[INFO] Rollout progress (${ROLLOUT_ELAPSED}s): $(kubectl get pods -l helm-release-name=vllm --no-headers 2>/dev/null | awk '{print $1 "=" $3}' | tr '\n' ' ') ($READY_PODS/$TOTAL_PODS ready)"
+        echo "[INFO] Rollout progress (${ROLLOUT_ELAPSED}s): $(kubectl get pods --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | awk '{print $1 "=" $3}' | tr '\n' ' ') ($READY_PODS/$TOTAL_PODS ready)"
         sleep 5
       done
 
       # Clean up old ReplicaSets only after successful rollout
       echo "[FIX] Cleaning up old ReplicaSets for $deploy after successful rollout..."
-      kubectl get replicaset -l helm-release-name=vllm -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.replicas}{"\n"}{end}' 2>/dev/null | while read rs_name rs_replicas; do
-        if [ -n "$rs_name" ] && [ "$rs_replicas" = "0" ]; then
+      kubectl get replicaset --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | awk '$2=="0" {print $1}' | while read rs_name; do
+        if [ -n "$rs_name" ]; then
           echo "[FIX] Deleting old ReplicaSet: $rs_name"
           kubectl delete replicaset $rs_name --grace-period=30 2>/dev/null || true
         fi
@@ -279,7 +307,7 @@ else
   # First ensure all pods are ready before doing node assignments to avoid unnecessary rollouts
   echo "Checking if all pods are ready before node assignments..."
   ALL_READY=true
-  VLLM_PODS=$(kubectl get pods -l helm-release-name=vllm --no-headers 2>/dev/null || true)
+  VLLM_PODS=$(kubectl get pods --no-headers 2>/dev/null | grep -E "(vllm|deployment)" || true)
   if [ -n "$VLLM_PODS" ]; then
     NOT_READY=$(echo "$VLLM_PODS" | awk '$2!="1/1" || $3!="Running"' | wc -l)
     if [ "$NOT_READY" -gt 0 ]; then
@@ -391,9 +419,12 @@ else
                   # Wait for rollout to complete before cleaning up old ReplicaSets with live progress
                   echo "[WAIT] Waiting for rollout of $DEPLOYMENT_NAME to complete..."
                   
-                  # Monitor rollout progress with observability
+                  # Monitor rollout progress with observability and failure detection
                   ROLLOUT_TIMEOUT=600
                   ROLLOUT_START=$(date +%s)
+                  CONSECUTIVE_FAILURES=0
+                  MAX_CONSECUTIVE_FAILURES=6  # 30 seconds of consecutive failures
+                  
                   while true; do
                     ROLLOUT_CURRENT=$(date +%s)
                     ROLLOUT_ELAPSED=$((ROLLOUT_CURRENT - ROLLOUT_START))
@@ -405,36 +436,42 @@ else
                     fi
                     
                     # Check if pods are actually ready (more reliable than rollout status)
-                    READY_PODS=$(kubectl get pods -l helm-release-name=vllm --no-headers 2>/dev/null | awk '$2=="1/1" && $3=="Running"' | wc -l)
-                    TOTAL_PODS=$(kubectl get pods -l helm-release-name=vllm --no-headers 2>/dev/null | wc -l)
+                    # Use a more general selector to catch all vllm-related pods
+                    READY_PODS=$(kubectl get pods --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | awk '$2=="1/1" && $3=="Running"' | wc -l)
+                    TOTAL_PODS=$(kubectl get pods --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | wc -l)
                     
                     if [ "$READY_PODS" -gt 0 ] && [ "$READY_PODS" -eq "$TOTAL_PODS" ]; then
                       echo "[OK] Rollout completed for $DEPLOYMENT_NAME - all $READY_PODS/$TOTAL_PODS pods ready"
                       break
                     fi
                     
-                    # Show comprehensive pod status for observability
-                    echo "[INFO] Rollout progress (${ROLLOUT_ELAPSED}s) - ALL PODS STATUS:"
-                    ALL_PODS=$(kubectl get pods 2>/dev/null)
-                    if [ -n "$ALL_PODS" ]; then
-                      echo "$ALL_PODS"
+                    # Check for persistent failures (CrashLoopBackOff, Error, ImagePullBackOff)
+                    FAILED_PODS=$(kubectl get pods --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | awk '$3 ~ /CrashLoopBackOff|Error|ImagePullBackOff/' | wc -l)
+                    if [ "$FAILED_PODS" -gt 0 ]; then
+                      CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
+                      echo "[WARN] Rollout progress (${ROLLOUT_ELAPSED}s): $FAILED_PODS pods in failure state (consecutive failures: $CONSECUTIVE_FAILURES/$MAX_CONSECUTIVE_FAILURES)"
                       
-                      # Summary counts
-                      TOTAL_PODS=$(echo "$ALL_PODS" | tail -n +2 | wc -l)
-                      READY_PODS=$(echo "$ALL_PODS" | grep -c " 1/1 " 2>/dev/null || echo "0")
-                      RUNNING_PODS=$(echo "$ALL_PODS" | grep -c " Running " 2>/dev/null || echo "0")
-                      echo "  SUMMARY: $READY_PODS/$TOTAL_PODS pods ready, $RUNNING_PODS running"
+                      if [ $CONSECUTIVE_FAILURES -ge $MAX_CONSECUTIVE_FAILURES ]; then
+                        echo "[ERROR] Persistent failures detected - $FAILED_PODS pods failing for $((CONSECUTIVE_FAILURES * 5)) seconds"
+                        echo "[ERROR] Deployment $DEPLOYMENT_NAME appears to have a configuration issue. Last pod status:"
+                        kubectl get pods
+                        echo "[ERROR] Recent logs from failing pods:"
+                        kubectl get pods --no-headers | grep -E "(vllm|deployment)" | awk '$3 ~ /CrashLoopBackOff|Error/' | head -1 | awk '{print $1}' | xargs -r kubectl logs --tail=10
+                        break
+                      fi
                     else
-                      echo "  No pods found"
+                      CONSECUTIVE_FAILURES=0
                     fi
-                    echo "--- END POD STATUS ---"
+                    
+                    # Show current pod status for observability
+                    echo "[INFO] Rollout progress (${ROLLOUT_ELAPSED}s): $(kubectl get pods --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | awk '{print $1 "=" $3}' | tr '\n' ' ') ($READY_PODS/$TOTAL_PODS ready)"
                     sleep 5
                   done
 
                   # Clean up old ReplicaSets only after successful rollout
                   echo "[FIX] Cleaning up old ReplicaSets for $DEPLOYMENT_NAME after successful rollout..."
-                  kubectl get replicaset -l helm-release-name=vllm -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.replicas}{"\n"}{end}' 2>/dev/null | while read rs_name rs_replicas; do
-                    if [ -n "$rs_name" ] && [ "$rs_replicas" = "0" ]; then
+                  kubectl get replicaset --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | awk '$2=="0" {print $1}' | while read rs_name; do
+                    if [ -n "$rs_name" ]; then
                       echo "[FIX] Deleting old ReplicaSet: $rs_name"
                       kubectl delete replicaset $rs_name --grace-period=30 2>/dev/null || true
                     fi
@@ -521,16 +558,16 @@ while true; do
         echo "[FIX] Current deployment revision for $DEPLOYMENT_NAME: $CURRENT_REVISION"
 
         # Find all ReplicaSets for this deployment and delete the ones with 0 replicas
-        kubectl get replicaset -l helm-release-name=vllm -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.replicas}{" "}{.metadata.annotations.deployment\.kubernetes\.io/revision}{"\n"}{end}' 2>/dev/null | while read rs_name rs_replicas rs_revision; do
-          if [ -n "$rs_name" ] && [ "$rs_replicas" = "0" ]; then
-            echo "[FIX] Force deleting ReplicaSet with 0 replicas: $rs_name (revision: $rs_revision)"
+        kubectl get replicaset --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | awk '$2=="0" {print $1}' | while read rs_name; do
+          if [ -n "$rs_name" ]; then
+            echo "[FIX] Force deleting ReplicaSet with 0 replicas: $rs_name"
             kubectl delete replicaset $rs_name --force --grace-period=0 2>/dev/null || true
           fi
         done
       else
         # Fallback: just delete any ReplicaSets with 0 replicas for this deployment
-        kubectl get replicaset -l helm-release-name=vllm -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.replicas}{"\n"}{end}' 2>/dev/null | while read rs_name rs_replicas; do
-          if [ -n "$rs_name" ] && [ "$rs_replicas" = "0" ]; then
+        kubectl get replicaset --no-headers 2>/dev/null | grep -E "(vllm|deployment)" | awk '$2=="0" {print $1}' | while read rs_name; do
+          if [ -n "$rs_name" ]; then
             echo "[FIX] Force deleting ReplicaSet with 0 replicas: $rs_name"
             kubectl delete replicaset $rs_name --force --grace-period=0 2>/dev/null || true
           fi

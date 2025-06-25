@@ -1,0 +1,45 @@
+servingEngineSpec:
+  runtimeClassName: ""
+  modelSpec:
+  - name: "serving"
+    repository: "lmcache/vllm-openai"
+    tag: "latest-nightly"
+    modelURL: "meta-llama/Llama-3.1-8B-Instruct"
+    replicaCount: 1
+    requestCPU: 10
+    requestMemory: "60Gi"
+    requestGPU: 1
+    pvcStorage: "180Gi" # use 180/200 GB of the gpu node pool (need to change later when more than 1 serving engine)
+    pvcAccessMode:
+      - ReadWriteOnce
+    vllmConfig:
+      v1: 1
+      enablePrefixCaching: false
+      maxModelLen: 30000
+      dtype: "bfloat16"
+      gpuMemoryUtilization: "0.95" # new for v1
+      extraArgs: ["--disable-log-requests", "--swap-space", 0]
+      tensorParallelSize: 1
+    env:
+      - name: LMCACHE_USE_LAYERWISE
+        value: "True"
+      - name: LMCACHE_LOG_LEVEL
+        value: "INFO"
+    lmcacheConfig:
+      enabled: true
+      cpuOffloadingBufferSize: "50"
+    hf_token: <YOUR_HF_TOKEN>
+    shmSize: "20Gi"
+
+routerSpec:
+  resources:
+    requests:
+      cpu: "2"
+      memory: "8G"
+    limits:
+      cpu: "2"
+      memory: "8G"
+  routingLogic: "session"
+  sessionKey: "x-user-id"
+  repository: "lmcache/lmstack-router"
+  tag: "latest"
