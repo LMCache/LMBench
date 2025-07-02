@@ -196,6 +196,10 @@ servingEngineSpec:
     requestMemory: "70Gi"
     requestGPU: 1
     pvcStorage: "50Gi"
+    vllmConfig:
+      enablePrefixCaching: true
+      maxModelLen: 32000
+      v1: 1
 
     lmcacheConfig:
       enabled: true
