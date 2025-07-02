@@ -151,17 +151,10 @@ while true; do
       echo "[WAIT] Waiting for rollout of $deploy to complete..."
       
       # Monitor rollout progress with observability
-      ROLLOUT_TIMEOUT=600
       ROLLOUT_START=$(date +%s)
       while true; do
         ROLLOUT_CURRENT=$(date +%s)
         ROLLOUT_ELAPSED=$((ROLLOUT_CURRENT - ROLLOUT_START))
-        
-        if [ $ROLLOUT_ELAPSED -gt $ROLLOUT_TIMEOUT ]; then
-          echo "[ERROR] Rollout timeout for $deploy after ${ROLLOUT_TIMEOUT}s"
-          kubectl get pods
-          break
-        fi
         
         # Check if pods are actually ready (more reliable than rollout status)
         # Use a more general selector to catch all vllm-related pods
@@ -233,7 +226,6 @@ if [ -n "$VLLM_DEPLOYMENTS" ]; then
       echo "[WAIT] Waiting for rollout of $deploy to complete..."
       
       # Monitor rollout progress with observability and failure detection
-      ROLLOUT_TIMEOUT=600
       ROLLOUT_START=$(date +%s)
       CONSECUTIVE_FAILURES=0
       MAX_CONSECUTIVE_FAILURES=6  # 30 seconds of consecutive failures
@@ -241,12 +233,6 @@ if [ -n "$VLLM_DEPLOYMENTS" ]; then
       while true; do
         ROLLOUT_CURRENT=$(date +%s)
         ROLLOUT_ELAPSED=$((ROLLOUT_CURRENT - ROLLOUT_START))
-        
-        if [ $ROLLOUT_ELAPSED -gt $ROLLOUT_TIMEOUT ]; then
-          echo "[ERROR] Rollout timeout for $deploy after ${ROLLOUT_TIMEOUT}s"
-          kubectl get pods
-          break
-        fi
         
         # Check if pods are actually ready (more reliable than rollout status)
         # Use a more general selector to catch all vllm-related pods
@@ -420,7 +406,6 @@ else
                   echo "[WAIT] Waiting for rollout of $DEPLOYMENT_NAME to complete..."
                   
                   # Monitor rollout progress with observability and failure detection
-                  ROLLOUT_TIMEOUT=600
                   ROLLOUT_START=$(date +%s)
                   CONSECUTIVE_FAILURES=0
                   MAX_CONSECUTIVE_FAILURES=6  # 30 seconds of consecutive failures
@@ -428,12 +413,6 @@ else
                   while true; do
                     ROLLOUT_CURRENT=$(date +%s)
                     ROLLOUT_ELAPSED=$((ROLLOUT_CURRENT - ROLLOUT_START))
-                    
-                    if [ $ROLLOUT_ELAPSED -gt $ROLLOUT_TIMEOUT ]; then
-                      echo "[ERROR] Rollout timeout for $DEPLOYMENT_NAME after ${ROLLOUT_TIMEOUT}s"
-                      kubectl get pods
-                      break
-                    fi
                     
                     # Check if pods are actually ready (more reliable than rollout status)
                     # Use a more general selector to catch all vllm-related pods
