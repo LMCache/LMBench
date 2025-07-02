@@ -1,0 +1,27 @@
+Name: 8A100-versus-4H100
+
+Serving:
+  # - Helm-ProductionStack:
+  #     helmConfigSelection: hardware/8A100-TP1.yaml
+  #     hf_token: <YOUR_HF_TOKEN>
+  #     modelURL: meta-llama/Llama-3.1-8B-Instruct
+  - Helm-ProductionStack:
+      helmConfigSelection: hardware/4H100-TP1.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+  - Helm-ProductionStack:
+      helmConfigSelection: hardware/8A100-TP2.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: meta-llama/Llama-3.1-70B-Instruct
+
+Workload:
+  LMCacheSynthetic:
+    # long input short output:
+    - NUM_USERS_WARMUP: 20
+      NUM_USERS: 25
+      NUM_ROUNDS: 20
+      SYSTEM_PROMPT: 1000
+      CHAT_HISTORY: 18000
+      ANSWER_LEN: 100
+      QPS: [0.1, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, 3.2, 3.6, 4.0, 4.4, 4.8, 5.2, 5.6, 6.0, 6.4, 6.8, 7.2, 7.6, 8.0]
+      USE_SHAREGPT: false
