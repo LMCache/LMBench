@@ -1,83 +1,86 @@
-# LMBench: Kubernetes-based Online Benchmarking.
+# LMBench: Modular LLM Serving Benchmarking Framework
 
 [Dashboard: lmbench.dev](https://lmbench.dev/)
+![Dashboard Image](img.png)
 
-# E2E Instructions
+## Overview
 
-## Step 1: Take a look at the LMBench benchmarking "suites" inside of `0-bench-specs/`
+LMBench is a benchmarking framework for [LMCache](https://github.com/LMCache/LMCache) and [vLLM Production Stack](https://github.com/vllm-project/production-stack) with external baseline comparison support (SGLang, Dynamo, etc.).
 
-Definition: every single one of these specification files is a benchmarking **"suite."** A suite is defined as the cartesian product between a set of serving baselines (e.g. production stack w/ lmcache, production stack w/o lmcache, sglang, dynamo, llm-d etc.) and a set of workload generators (e.g. long input short output synthetic, sharegpt, agentic, vllm benchmark serving etc.). Every serving baseline will be run on every workload generator.
+**Core Architecture**: Cartesian product evaluation of serving baselines × workload generators across configurable infrastructure.
 
-**USAGE**: Please take a look at `TEMPLATE-spec.yaml` for all the existing serving baselines and workload generators.
+## Key Definitions
 
-**Observability**: Every specification file contains a "suite name" at the top. These will be the top level groupings inside of [lmbench.dev](lmbench.dev).
+- **Suite**: Cartesian product of serving baselines and workloads defined in `0-bench-specs/*.yaml`
+- **Session**: Single deployment with unique `lmbench-session-id` for result tracking
+- **Baseline**: Serving system exposing OpenAI-compatible API on `localhost:30080`
+- **Workload**: Traffic generator simulating specific usage patterns
 
-**EXTENSIBILITY**: Feel free to create your own suites i.e. create your own specs. Again, everything you need should be in `TEMPLATE-spec.yaml`.
+## Modular Structure
 
-## Step 2: Choose which benchmarking suites you want to run in your LMBench "session"
-
-Definition: every time you deploy LMBench, this is defined as a benchmarking **"session"** and each deployment comes with an `lmbench-session-id`. [lmbench.dev](lmbench.dev) allows you to view the results specific to a single session.
-
-**CONTROL FLOW**: The top level entrypoint is `run-bench.py`. The top level configuration is `run-bench.yaml`
-
-**CONFIGURATION**: Specify which benchmarking suites you want to run inside of `run-bench.yaml`. You also need to specify what kind of infrastructure you want to run on (deployment explained right below). Please see `run-bench-TEMPLATE.yaml` for all the existing infrastructures and the exact details on how to choose suites to run.
-
-**DEPLOYMENT**:
-
-#### Option 1: Local (please specify `LocalMinikube` in the infrastructure in `run-bench.yaml`)
-
-```bash
-export HF_TOKEN=<YOUR_HF_TOKEN>
-pip install -r requirements.txt
-python run-bench.py
+```
+LMBench/
+├── 0-bench-specs/           # Suite definitions (baselines × workloads)
+│   └── TEMPLATE-spec.yaml   # All available options
+├── 1-infrastructure/        # Platform setup (K8s clusters, cloud resources)
+│   ├── lmcache-gke/        # Google Kubernetes Engine
+│   ├── local-minikube/     # Local Kubernetes
+│   └── local-flat/         # Direct script execution
+├── 2-serving-engines/       # Baseline deployments
+│   ├── helm-production-stack/    # vLLM Production Stack (Helm)
+│   ├── direct-production-stack/  # vLLM Production Stack (Direct K8s)
+│   ├── sglang/             # SGLang baseline
+│   ├── dynamo/             # Meta Dynamo baseline  
+│   └── ADDING_NEW_BASELINES.md
+├── 3-workloads/            # Traffic generators
+│   ├── synthetic/          # Configurable multi-round QA
+│   ├── agentic/           # Multi-agent conversations
+│   ├── sharegpt/          # Real conversation data
+│   ├── vllm-benchmark-serving/  # vLLM benchmark integration
+│   └── ADDING_NEW_WORKLOADS.md
+├── 4-latest-results/       # Benchmark outputs and post-processing
+├── run-bench.py           # Main orchestrator
+├── run-bench.yaml         # Top-level configuration
+└── TEMPLATE-run-bench.yaml # Infrastructure options
 ```
 
-#### Option 2: LMCache GKE Runner (please specify `LMCacheGKE` along with number of GPUs and VRAM in `run-bench.yaml`)
+## Quick Start
 
-Then create a PR, a push, or manually trigger the workflow. The artifact will be available at `https://github.com/LMCache/LMBench/actions` once completed.
+1. **Configure**: Edit `run-bench.yaml` to select suites and infrastructure
+2. **Deploy**: `export HF_TOKEN=<token> && python run-bench.py`
+3. **Results**: View `.png` graphs in `4-latest-results/<suite-name>/`
 
+### Infrastructure Options
+- **LMCacheGKE**: Managed GKE cluster with GPUs
+- **LocalMinikube**: Local Kubernetes development
+- **Local-Flat**: Direct script deployment (no containers)
 
-## Step 3: Viewing and Contributing to the dashboard
+### Example Configuration
+```yaml
+# run-bench.yaml
+0-bench-specs:
+  - layerwise/layerwise-spec.yaml
 
-If the results (see appendum for how to undrstand LMBench artifacts) of your LMBench "session" look good, please upload/contribute them to [lmbench.dev](lmbench.dev) (ask us for the password! this is so junk results don't pollute the dashboard).
-
-The dashboard groups first by suites, then workloads within the suite, and then you can view graphs `by QPS` or `by Date` (time series). If you understand how LMBench uses the word "suite" (a set of serving baselines all compared on the same set of workloads) and the word "session" (a single deployment of LMBench), then the dashboard should feel intuitive!
-
-# Appendum: Understanding LMBench Artifacts
-
-TL;DR -- look for `.png` files if you just want a nice looking graph summarizing your suites for your session
-
-Longer explanation of the deliverable per suite (a folder)
-
-Example (`suite-name/` <- Name of the Benchmarking Suite is the folder name):
-```text:
-suite-name/{KEY1}_{WORKLOAD1}_{QPS1}_{TIME1}.json
-suite-name/{KEY1}_{WORKLOAD1}_{QPS2}_{TIME2}.json
-suite-name/{KEY1}_{WORKLOAD2}_{QPS1}_{TIME3}.json
-suite-name/{KEY1}_{WORKLOAD2}_{QPS2}_{TIME4}.json
-suite-name/{KEY2}_{WORKLOAD1}_{QPS1}_{TIME5}.json
-suite-name/{KEY2}_{WORKLOAD1}_{QPS2}_{TIME6}.json
-suite-name/{KEY2}_{WORKLOAD2}_{QPS1}_{TIME7}.json
-suite-name/{KEY2}_{WORKLOAD2}_{QPS2}_{TIME8}.json
-suite-name/{WORKLOAD1}_comparison.json
-suite-name/{WORKLOAD1}_comparison.png
-suite-name/{WORKLOAD2}_comparison.json
-suite-name/{WORKLOAD2}_comparison.png
+1-infrastructure:
+  Location: LocalMinikube
 ```
 
-Examples:
-```text
-example/layerwise_w_synthetic_0.7_20250529-0758.json
-example/layerwise_w_synthetic_0.9_20250529-0826.json
-example/layerwise_wo_synthetic_0.7_20250529-0910.json
-example/layerwise_wo_synthetic_0.9_20250529-1053.json
-example/synthetic_comparison.json
-example/synthetic_comparison.png
+## Extensibility
 
-daily/routing_lmcache_roundrobin_agentic_0.2_20250529-1124.json
-daily/routing_lmcache_session_agentic_0.2_20250529-1148.json
-daily/routing_lmcache_sessionaware_agentic_0.2_20250529-1319.json
-daily/routing_lmcache_kvaware_agentic_0.2_20250529-1523.json
-daily/agentic_comparison.json
-daily/agentic_comparison.png
+- **New Baselines**: See `2-serving-engines/ADDING_NEW_BASELINES.md`
+- **New Workloads**: See `3-workloads/ADDING_NEW_WORKLOADS.md`  
+- **New Suites**: Create spec files using `0-bench-specs/TEMPLATE-spec.yaml`
+
+## Artifacts
+
+Each session produces per-suite directories with:
 ```
+suite-name/
+├── {baseline}_{workload}_{qps}_{timestamp}.json  # Raw results
+├── {workload}_comparison.png                     # Performance graphs
+└── pod-logs/                                     # Infrastructure logs
+```
+
+## Dashboard and Uploading Results
+
+Upload results to [lmbench.dev](https://lmbench.dev) for time-series analysis and cross-session comparison. Results are grouped by suite → workload with QPS and temporal views.

@@ -13,6 +13,8 @@
   Location: LocalMinikube
   # Option 3: running on LMCache GKE cluster
   Location: LMCacheGKE
+  # Option 4: local script deployment (no containers)
+  Location: Local-Flat
   numClusterGPUs: 1
   A100_VRAM: 40 # either 40 or 80 (80 is difficult to obtain on GCP so will run as "spot" and may fail)
   # 1 GPU -> 12 vCPUs, 85GB RAM

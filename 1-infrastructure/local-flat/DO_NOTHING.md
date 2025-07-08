@@ -1,0 +1,1 @@
+local-flat infrastructure does nothing (e.g. no kubernetes runtime setup) and is for purely local deployments with no orchestration layer. 

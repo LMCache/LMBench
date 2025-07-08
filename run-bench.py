@@ -48,7 +48,7 @@ def read_run_bench_config() -> Dict[str, Any]:
         if not location:
             raise ValueError("Location must be specified in 1-infrastructure")
 
-        if location not in ['NoBench', 'LocalMinikube', 'LMCacheGKE']:
+        if location not in ['NoBench', 'LocalMinikube', 'LMCacheGKE', 'Local-Flat']:
             raise ValueError(f"Unsupported infrastructure location: {location}")
 
         if location == 'LMCacheGKE':
@@ -232,6 +232,8 @@ def setup_infrastructure_from_run_bench_config(infrastructure_config: Dict[str, 
         minikube_installation_from_infrastructure_config(infrastructure_config)
     elif location == 'LMCacheGKE':
         start_gke_cluster_from_infrastructure_config(infrastructure_config)
+    elif location == 'Local-Flat':
+        print("Using Local-Flat infrastructure - no setup required")
     else:
         raise ValueError(f"Unsupported infrastructure location: {location}")
 
