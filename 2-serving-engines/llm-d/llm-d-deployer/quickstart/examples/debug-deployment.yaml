@@ -1,0 +1,40 @@
+sampleApplication:
+  baseConfigMapRefName: basic-gpu-preset
+  model:
+    modelArtifactURI: hf://meta-llama/Llama-3.1-8B-Instruct
+    modelName: "llama-3-1-8b"
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+    requests:
+      nvidia.com/gpu: 1
+  prefill:
+    replicas: 0  # Disable prefill for simplicity
+  decode:
+    replicas: 1
+    extraArgs:
+      - "--tensor-parallel-size"
+      - "1"
+      - "--max-model-len"
+      - "4096"
+      - "--gpu-memory-utilization"
+      - "0.7"
+      - "--enforce-eager"
+      - "--disable-sliding-window"
+
+redis:
+  enabled: false
+
+modelservice:
+  epp:
+    defaultEnvVarsOverride:
+      - name: ENABLE_KVCACHE_AWARE_SCORER
+        value: "false"
+      - name: ENABLE_PREFIX_AWARE_SCORER
+        value: "false"
+      - name: ENABLE_LOAD_AWARE_SCORER
+        value: "false"
+      - name: ENABLE_SESSION_AWARE_SCORER
+        value: "false"
+      - name: PD_ENABLED
+        value: "false"

@@ -1,0 +1,21 @@
+# Chart dependencies
+charts/**/*.tgz
+
+# Chart testing revision file
+ct-previous-revision*
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Various IDEs
+.idea
+.vscode
+
+# Common backup files
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
