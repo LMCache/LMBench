@@ -17,8 +17,8 @@ os.environ["VLLM_USE_V1"] = "1"
 # --- Define the config ---
 llm_config = LLMConfig(
     model_loading_config=dict(
-        model_id="meta-llama/Llama-3.1-70B-Instruct",
-        model_source="meta-llama/Llama-3.1-70B-Instruct",
+        model_id="Qwen/Qwen3-32B",
+        model_source="Qwen/Qwen3-32B",
     ),
     deployment_config=dict(
         autoscaling_config=dict(

@@ -49,13 +49,21 @@ Serving:
       # The script reads HF_TOKEN directly from environment variable.
       # Example: ./comparison-baseline.sh H100
 
-  # Option 5: Dynamo
+  # Option 5: Dynamo (Local-Flat infrastructure ONLY)
   - Dynamo:
-      # Coming soon...
+      # Configuration file from 2-serving-engines/dynamo/dynamo_configurations/
+      configSelection: comparison-baseline.yaml
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+      # NOTE: Dynamo requires Local-Flat infrastructure.
+      # The script reads HF_TOKEN directly from environment variable.
 
-  # Option 6: LLM-D
+  # Option 6: LLM-D (LocalMinikube infrastructure ONLY)
   - LLM-D:
-      # Coming soon...
+      # Configuration file from 2-serving-engines/llm-d/llmd_configurations/
+      configSelection: debug-baseline.yaml
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+      # NOTE: LLM-D requires LocalMinikube infrastructure.
+      # The script reads HF_TOKEN directly from environment variable.
 
 # 3-workloads/
 Workload:

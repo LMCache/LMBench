@@ -6,31 +6,49 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+# Check if script name argument is provided
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 <script-name>"
+    echo "Example: $0 comparison-baseline.sh"
+    echo "Available scripts:"
+    ls -1 *.sh 2>/dev/null | grep -v choose-and-deploy.sh | grep -v setup.sh | grep -v wait.sh || echo "  No deployment scripts found"
+    exit 1
+fi
+
+SCRIPT_NAME="$1"
+
 echo "=== SGLang Baseline Deployment ==="
+echo "Script: $SCRIPT_NAME"
 
 # Step 1: Setup - Clean GPU processes, validate HF_TOKEN
 echo "Step 1: Running setup..."
 bash setup.sh
 
-# Step 2: Deployment - Run SGLang deployment
+# Step 2: Deployment - Run specified SGLang deployment script
 echo "Step 2: Starting deployment..."
 
-# Deploy SGLang using the existing baseline logic
-echo "Deploying SGLang baseline..."
-export PATH=/usr/local/cuda/bin:$PATH
+# Validate script exists
+if [ ! -f "$SCRIPT_NAME" ]; then
+    echo "Error: Deployment script not found: $SCRIPT_NAME"
+    exit 1
+fi
 
-# Use the existing model configuration (can be parameterized later)
-nohup python -m sglang_router.launch_server \
-    --model-path meta-llama/Meta-Llama-3.1-8B-Instruct \
-    --dp-size 1 \
-    --tp 1 \
-    --host 0.0.0.0 \
-    --port 30080 > sglang.log 2>&1 &
+# Run the deployment script
+echo "Running deployment script: $SCRIPT_NAME"
+nohup bash "$SCRIPT_NAME" > sglang.log 2>&1 &
 
 echo "SGLang deployment started."
 
-# Step 3: Wait for service readiness
+# Step 3: Wait for service readiness using common wait script
 echo "Step 3: Waiting for service readiness..."
-bash wait.sh
+COMMON_WAIT_SCRIPT="$SCRIPT_DIR/../common/wait-for-service.sh"
+if [ -f "$COMMON_WAIT_SCRIPT" ]; then
+    chmod +x "$COMMON_WAIT_SCRIPT"
+    bash "$COMMON_WAIT_SCRIPT" 900 "SGLang" "$SCRIPT_DIR"  # 15 minutes timeout
+else
+    echo "ERROR: Common wait script not found at $COMMON_WAIT_SCRIPT"
+    echo "Falling back to basic wait..."
+    bash wait.sh
+fi
 
 echo "=== SGLang Deployment Complete ===" 

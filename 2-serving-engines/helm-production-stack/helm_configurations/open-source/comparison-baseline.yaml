@@ -1,0 +1,38 @@
+servingEngineSpec:
+  runtimeClassName: ""
+  modelSpec:
+  - name: "qwen3"
+    repository: "lmcache/vllm-openai"
+    tag: "2025-05-27-v1"
+    modelURL: "Qwen/Qwen3-32B"
+    replicaCount: 4
+    requestCPU: 8
+    requestMemory: "70Gi"
+    requestGPU: 2
+    pvcStorage: "50Gi"
+    pvcAccessMode:
+      - ReadWriteOnce
+    vllmConfig:
+      enablePrefixCaching: true
+      maxModelLen: 32000
+      v1: 1
+      extraArgs:
+        - "--tensor-parallel-size"
+        - "2"
+    lmcacheConfig:
+      enabled: true
+      cpuOffloadingBufferSize: "60"
+    hf_token: <YOUR_HF_TOKEN>
+
+routerSpec:
+  repository: "lmcache/lmstack-router"
+  tag: "kvaware-latest"
+  resources:
+    requests:
+      cpu: "1"
+      memory: "2G"
+    limits:
+      cpu: "1"
+      memory: "2G"
+  routingLogic: "session"
+  sessionKey: "x-user-id"

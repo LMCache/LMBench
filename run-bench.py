@@ -67,7 +67,7 @@ def substitute_hf_token_in_config(config: Dict[str, Any]) -> Dict[str, Any]:
         print("Warning: HF_TOKEN environment variable must be set!")
         sys.exit(1)
 
-    def recursive_substitute(obj):
+    def recursive_substitute(obj: Any) -> Any:
         if isinstance(obj, dict):
             return {k: recursive_substitute(v) for k, v in obj.items()}
         elif isinstance(obj, list):
@@ -164,7 +164,12 @@ def validate_single_spec_config(config: Dict[str, Any], file_path: str) -> Dict[
             if not model_url:
                 raise ValueError(f"modelURL must be specified for LLM-D baseline {i} in {file_path}")
         elif baseline_type == 'Dynamo':
-            pass  # No validation needed for Dynamo yet
+            config_selection = baseline_config.get('configSelection')
+            model_url = baseline_config.get('modelURL')
+            if not config_selection:
+                raise ValueError(f"configSelection must be specified for Dynamo baseline {i} in {file_path}")
+            if not model_url:
+                raise ValueError(f"modelURL must be specified for Dynamo baseline {i} in {file_path}")
         else:
             raise ValueError(f"Unsupported baseline type: {baseline_type} in baseline {i} in {file_path}")
 
@@ -316,7 +321,9 @@ def generate_baseline_key(serving_config: Dict[str, Any]) -> str:
         config_selection = baseline_config.get('configSelection', '')
         return f"llmd_{config_selection.replace('/', '_').replace('.yaml', '')}"
     elif baseline_type == 'Dynamo':
-        return 'dynamo'
+        # dynamo_{config_name} based on configSelection
+        config_selection = baseline_config.get('configSelection', '')
+        return f"dynamo_{config_selection.replace('/', '_').replace('.yaml', '')}"
     else:
         raise ValueError(f"Unsupported baseline type: {baseline_type}")
 
@@ -383,8 +390,15 @@ def setup_single_baseline(serving_config: Dict[str, Any], global_config: Dict[st
         llmd_installation(baseline_config)
 
     elif baseline_type == 'Dynamo':
-        # TODO: Implement Dynamo setup
-        pass
+        config_selection = baseline_config.get('configSelection')
+        model_url = baseline_config.get('modelURL')
+        if not config_selection:
+            raise ValueError(f"configSelection must be specified for Dynamo baseline {serving_index}")
+        if not model_url:
+            raise ValueError(f"modelURL must be specified for Dynamo baseline {serving_index}")
+        MODEL_URL = model_url
+        # HF_TOKEN is read directly from environment variable by the script
+        dynamo_installation(baseline_config)
 
     else:
         raise ValueError(f"Unsupported baseline type: {baseline_type}")
@@ -396,7 +410,7 @@ def setup_baseline(config: Dict[str, Any]) -> None:
 
 def sglang_installation(sglang_config: Dict[str, Any]) -> None:
     """
-    Deploy SGLang using the configured script for Local-Flat deployment
+    Deploy SGLang using the unified choose-and-deploy.sh entrypoint
     """
     script_name = sglang_config.get('scriptName')
     if not script_name:
@@ -406,39 +420,22 @@ def sglang_installation(sglang_config: Dict[str, Any]) -> None:
     if not os.environ.get('HF_TOKEN'):
         raise ValueError("HF_TOKEN environment variable is not set")
 
-    # Run the specified SGLang script
-    script_path = Path(__file__).parent / '2-serving-engines' / 'sglang' / script_name
+    # Use choose-and-deploy.sh as the single entrypoint (includes setup + deployment + wait)
+    script_path = Path(__file__).parent / '2-serving-engines' / 'sglang' / 'choose-and-deploy.sh'
     if not script_path.exists():
-        raise FileNotFoundError(f"SGLang script not found: {script_path}")
+        raise FileNotFoundError(f"SGLang choose-and-deploy script not found: {script_path}")
     
     os.chmod(script_path, 0o755)
-    print(f"Running SGLang script: {script_name}")
+    print(f"Running SGLang choose-and-deploy script with {script_name} (includes setup + deployment + wait)")
     
-    # CRITICAL: Block until service ready
-    print("Waiting for service readiness...")
-    subprocess.run([str(script_path)], check=True)
+    # CRITICAL: Block until service ready (choose-and-deploy.sh handles this internally)
+    subprocess.run([str(script_path), script_name], check=True)
     
-    # Wait for the service to be ready
-    import time
-    time.sleep(5)  # Give the service a moment to start
-    timeout = 300
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            import requests
-            response = requests.get('http://localhost:30080/v1/models', timeout=5)
-            if response.status_code == 200:
-                print("SGLang service is ready")
-                return
-        except:
-            pass
-        time.sleep(5)
-    
-    raise RuntimeError("SGLang service failed to become ready within timeout")
+    print("SGLang deployment completed successfully")
 
 def rayserve_installation(rayserve_config: Dict[str, Any]) -> None:
     """
-    Deploy RayServe using the configured script for Local-Flat deployment
+    Deploy RayServe using the unified choose-and-deploy.sh entrypoint
     """
     script_name = rayserve_config.get('scriptName')
     accelerator_type = rayserve_config.get('acceleratorType')
@@ -451,35 +448,18 @@ def rayserve_installation(rayserve_config: Dict[str, Any]) -> None:
     if not os.environ.get('HF_TOKEN'):
         raise ValueError("HF_TOKEN environment variable is not set")
 
-    # Run the specified RayServe script with accelerator type
-    script_path = Path(__file__).parent / '2-serving-engines' / 'rayserve' / script_name
+    # Use choose-and-deploy.sh as the single entrypoint (includes setup + deployment + wait)
+    script_path = Path(__file__).parent / '2-serving-engines' / 'rayserve' / 'choose-and-deploy.sh'
     if not script_path.exists():
-        raise FileNotFoundError(f"RayServe script not found: {script_path}")
+        raise FileNotFoundError(f"RayServe choose-and-deploy script not found: {script_path}")
     
     os.chmod(script_path, 0o755)
-    print(f"Running RayServe script: {script_name} with accelerator type: {accelerator_type}")
+    print(f"Running RayServe choose-and-deploy script with {script_name} and {accelerator_type} (includes setup + deployment + wait)")
     
-    # CRITICAL: Block until service ready
-    print("Waiting for service readiness...")
-    subprocess.run([str(script_path), accelerator_type], check=True)
+    # CRITICAL: Block until service ready (choose-and-deploy.sh handles this internally)
+    subprocess.run([str(script_path), script_name, accelerator_type], check=True)
     
-    # Wait for the service to be ready
-    import time
-    time.sleep(5)  # Give the service a moment to start
-    timeout = 300
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            import requests
-            response = requests.get('http://localhost:30080/v1/models', timeout=5)
-            if response.status_code == 200:
-                print("RayServe service is ready")
-                return
-        except:
-            pass
-        time.sleep(5)
-    
-    raise RuntimeError("RayServe service failed to become ready within timeout")
+    print("RayServe deployment completed successfully")
 
 def llmd_installation(llmd_config: Dict[str, Any]) -> None:
     """
@@ -494,12 +474,13 @@ def llmd_installation(llmd_config: Dict[str, Any]) -> None:
         raise ValueError("HF_TOKEN environment variable is not set")
 
     # Run the LLM-D choose-and-deploy script with config selection
+    # NOTE: choose-and-deploy.sh already calls setup.sh internally, so no need to call setup.sh separately
     script_path = Path(__file__).parent / '2-serving-engines' / 'llm-d' / 'choose-and-deploy.sh'
     if not script_path.exists():
         raise FileNotFoundError(f"LLM-D script not found: {script_path}")
     
     os.chmod(script_path, 0o755)
-    print(f"Running LLM-D script with config: {config_selection}")
+    print(f"Running LLM-D script with config: {config_selection} (includes comprehensive cleanup)")
     
     # CRITICAL: Block until service ready
     print("Deploying LLM-D and waiting for service readiness...")
@@ -523,6 +504,31 @@ def llmd_installation(llmd_config: Dict[str, Any]) -> None:
         time.sleep(5)
     
     raise RuntimeError("LLM-D service failed to become accessible within timeout")
+
+def dynamo_installation(dynamo_config: Dict[str, Any]) -> None:
+    """
+    Deploy Dynamo using the unified choose-and-deploy.sh entrypoint
+    """
+    config_selection = dynamo_config.get('configSelection')
+    if not config_selection:
+        raise ValueError("configSelection must be specified for Dynamo")
+    
+    # Script reads HF_TOKEN directly from environment variable
+    if not os.environ.get('HF_TOKEN'):
+        raise ValueError("HF_TOKEN environment variable is not set")
+
+    # Use choose-and-deploy.sh as the single entrypoint (includes setup + deployment + wait)
+    script_path = Path(__file__).parent / '2-serving-engines' / 'dynamo' / 'choose-and-deploy.sh'
+    if not script_path.exists():
+        raise FileNotFoundError(f"Dynamo choose-and-deploy script not found: {script_path}")
+    
+    os.chmod(script_path, 0o755)
+    print("Running Dynamo choose-and-deploy script (includes setup + deployment + wait)")
+    
+    # CRITICAL: Block until service ready (choose-and-deploy.sh handles this internally)
+    subprocess.run([str(script_path), config_selection], check=True)
+    
+    print("Dynamo deployment completed successfully")
 
 # Note: The old complex SGLang YAML overriding function has been removed 
 # as we now use simple script-based deployment for Local-Flat infrastructure
@@ -552,7 +558,7 @@ def helm_installation_with_config(prodstack_config: Dict[str, Any], global_confi
     os.chmod(deploy_script_path, 0o755)
 
     # Determine if we should skip node affinity based on Infrastructure.Location or command-line flag
-    skip_node_affinity = GLOBAL_ARGS.skip_node_affinity or (global_config.get('Infrastructure', {}).get('Location') != 'LMCacheGKE')
+    skip_node_affinity = (GLOBAL_ARGS and GLOBAL_ARGS.skip_node_affinity) or (global_config.get('Infrastructure', {}).get('Location') != 'LMCacheGKE')
 
     cmd = [str(deploy_script_path), str(helm_config_filename)]
     if skip_node_affinity:
@@ -589,7 +595,7 @@ def kubernetes_application(direct_production_stack_config: Dict[str, Any], globa
     os.chmod(deploy_script_path, 0o755)
 
     # Determine if we should skip node affinity based on Infrastructure.Location or command-line flag
-    skip_node_affinity = GLOBAL_ARGS.skip_node_affinity or (global_config.get('Infrastructure', {}).get('Location') != 'LMCacheGKE')
+    skip_node_affinity = (GLOBAL_ARGS and GLOBAL_ARGS.skip_node_affinity) or (global_config.get('Infrastructure', {}).get('Location') != 'LMCacheGKE')
 
     cmd = [str(deploy_script_path), str(k8s_config_filename)]
     if skip_node_affinity:
@@ -739,7 +745,13 @@ def sharegpt_run_workload(sharegpt_config: Dict[str, Any]) -> None:
 
     os.chmod(workload_exec_script_path, 0o755)
 
-    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH, LMBENCH_SESSION_ID
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH, LMBENCH_SESSION_ID, KEY
+
+    # Validate required globals
+    if not KEY:
+        raise ValueError("KEY is not set for ShareGPT workload")
+    if not MODEL_URL:
+        raise ValueError("MODEL_URL is not set for ShareGPT workload")
 
     # Read the benchmark name from the current spec config
     benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
@@ -752,6 +764,8 @@ def sharegpt_run_workload(sharegpt_config: Dict[str, Any]) -> None:
     min_rounds = sharegpt_config.get('MIN_ROUNDS')
     start_round = sharegpt_config.get('START_ROUND')
     qps_values = sharegpt_config.get('QPS')
+    if not qps_values:
+        raise ValueError("QPS values are required for ShareGPT workload")
     cmd.extend([str(limit)])
     cmd.extend([str(min_rounds)])
     cmd.extend([str(start_round)])

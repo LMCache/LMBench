@@ -19,5 +19,5 @@ pip install sglang-router
 # python -m sglang.launch_server --model-path meta-llama/Meta-Llama-3-8B-Instruct
 # python -m sglang_router.launch_server --model-path meta-llama/Meta-Llama-3.1-8B-Instruct --dp-size 1 --tp 1 --host 0.0.0.0 --port 30080
 
-nohup python -m sglang_router.launch_server --model-path meta-llama/Llama-3.1-70B-Instruct --dp-size 4 --tp 2 --host 0.0.0.0 --port 30080 &
+nohup python -m sglang_router.launch_server --model-path Qwen/Qwen3-32B --dp-size 4 --tp 2 --host 0.0.0.0 --port 30080 &
 

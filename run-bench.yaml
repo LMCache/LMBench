@@ -10,6 +10,7 @@
   # - layerwise/layerwise-no-prefix-spec.yaml
   # - layerwise/layerwise-debug-w.yaml
   # - single-debug/llmd-basic-spec.yaml
+  - open-source/comparisons.yaml
 
 1-infrastructure:
   Location: LocalMinikube

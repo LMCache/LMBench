@@ -4,18 +4,7 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-echo "=== LLM-D Baseline Setup ==="
-
-# Check if configuration file argument is provided
-if [ $# -eq 0 ]; then
-    echo "Usage: $0 <config-file-name>"
-    echo "Example: $0 debug-deployment.yaml"
-    echo "Available configurations:"
-    ls -1 llmd_configurations/ 2>/dev/null || echo "  No configurations found in llmd_configurations/"
-    exit 1
-fi
-
-CONFIG_FILE="$1"
+echo "=== Dynamo Setup ==="
 
 # 1. Run comprehensive cleanup of ALL baselines
 echo "Running comprehensive cleanup of ALL baselines..."
@@ -27,11 +16,29 @@ else
     exit 1
 fi
 
-# 4. Validate HF_TOKEN
+# 2. Validate HF_TOKEN (always required)
 if [ -z "$HF_TOKEN" ]; then
     echo "Error: HF_TOKEN environment variable is not set"
     echo "Please set your Hugging Face token: export HF_TOKEN=your_token_here"
     exit 1
+fi
+
+# 3. Install Docker and Docker Compose if not present
+echo "Checking Docker installation..."
+if ! command -v docker &> /dev/null; then
+    echo "Docker is not installed. Please install Docker first."
+    exit 1
+fi
+
+if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+    echo "Docker Compose is not installed. Please install Docker Compose first."
+    exit 1
+fi
+
+# 4. Create dynamo_configurations directory if it doesn't exist
+if [ ! -d "dynamo_configurations" ]; then
+    mkdir -p dynamo_configurations
+    echo "Created dynamo_configurations directory"
 fi
 
 echo "=== Setup complete. Ready for deployment. ===" 

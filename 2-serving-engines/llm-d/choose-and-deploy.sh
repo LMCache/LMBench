@@ -109,9 +109,17 @@ bash llmd-installer.sh --minikube --values-file "examples/$CONFIG_FILE"
 # Return to script directory
 cd "$SCRIPT_DIR"
 
-# Step 3: Wait for service readiness
+# Step 3: Wait for service readiness using common wait script
 echo "Step 3: Waiting for service readiness..."
-bash wait.sh
+COMMON_WAIT_SCRIPT="$SCRIPT_DIR/../common/wait-for-service.sh"
+if [ -f "$COMMON_WAIT_SCRIPT" ]; then
+    chmod +x "$COMMON_WAIT_SCRIPT"
+    bash "$COMMON_WAIT_SCRIPT" 900 "LLM-D" "$SCRIPT_DIR"  # 15 minutes timeout
+else
+    echo "ERROR: Common wait script not found at $COMMON_WAIT_SCRIPT"
+    echo "Falling back to basic wait..."
+    bash wait.sh
+fi
 
 nohup kubectl port-forward -n llm-d svc/llm-d-inference-gateway-istio 30080:80 &
 

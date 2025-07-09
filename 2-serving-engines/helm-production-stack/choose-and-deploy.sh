@@ -22,20 +22,15 @@ if [ -z "$HELM_CONFIG_FILENAME" ]; then
     exit 1
 fi
 
-# Clean up port 30080 early to avoid conflicts
-echo "Cleaning up any existing port forwarding on port 30080..."
-# Kill any kubectl port-forward processes specifically
-pkill -f "kubectl port-forward.*30080" 2>/dev/null || true
-# Also check for any other processes using port 30080
-PID_ON_30080=$(sudo lsof -t -i :30080 2>/dev/null)
-if [[ -n "$PID_ON_30080" ]]; then
-  echo "Found process on port 30080 (PID: $PID_ON_30080). Killing it..."
-  sudo kill -9 "$PID_ON_30080" || echo "  ❗️ Failed to kill PID $PID_ON_30080"
+# Run comprehensive cleanup of ALL baselines
+echo "Running comprehensive cleanup of ALL baselines..."
+COMMON_CLEANUP_SCRIPT="$SCRIPT_DIR/../common/cleanup-all-baselines.sh"
+if [ -f "$COMMON_CLEANUP_SCRIPT" ]; then
+    bash "$COMMON_CLEANUP_SCRIPT"
 else
-  echo "[OK] Port 30080 is free."
+    echo "Error: Common cleanup script not found at $COMMON_CLEANUP_SCRIPT"
+    exit 1
 fi
-# Wait a moment for the port to be fully released
-sleep 2
 
 # Set the path to the helm configurations directory
 HELM_CONFIG_DIR="$SCRIPT_DIR/helm_configurations"
@@ -49,51 +44,7 @@ if [ ! -f "$HELM_CONFIG_FILE" ]; then
     exit 1
 fi
 
-# Kill any process using port 30080
-if lsof -ti :30080 > /dev/null; then
-  echo "[WARN]  Port 30080 is already in use. Killing existing process..."
-  kill -9 $(lsof -ti :30080)
-fi
-
-# Clean up any existing deployments to avoid conflicts
-echo "Cleaning up kubectl resources..."
-kubectl delete all --all
-kubectl delete pvc --all
-kubectl delete poddisruptionbudget --all
-kubectl delete serviceaccount --all
-kubectl delete configmap --all
-kubectl delete secret --all
-kubectl delete ingress --all
-kubectl delete networkpolicy --all
-kubectl delete role --all
-kubectl delete rolebinding --all
-
-# Add these:
-kubectl delete deployment --all
-kubectl delete statefulset --all
-kubectl delete daemonset --all
-kubectl delete replicaset --all
-kubectl delete job --all
-kubectl delete cronjob --all
-kubectl delete hpa --all
-kubectl delete pdb --all
-kubectl delete service --all
-kubectl delete endpoints --all
-
-# Wait for all resources to be fully deleted
-echo "Waiting for all resources to be fully deleted..."
-while true; do
-  PODS=$(kubectl get pods | grep "deployment-vllm" | grep -v "router" 2>/dev/null || true)
-  ROUTER_PODS=$(kubectl get pods -l environment=router 2>/dev/null | grep -v "No resources found" || true)
-
-  if [ -z "$PODS" ] && [ -z "$ROUTER_PODS" ]; then
-    echo "[OK] All previous resources have been cleaned up"
-    break
-  fi
-
-  echo "[WAIT] Waiting for resources to be deleted..."
-  sleep 3
-done
+# Comprehensive cleanup has been completed above
 
 # Process the helm config file to substitute HF_TOKEN
 echo "Processing Helm configuration: $HELM_CONFIG_FILE"

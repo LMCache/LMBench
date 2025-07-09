@@ -2,33 +2,33 @@ sampleApplication:
   baseConfigMapRefName: basic-gpu-with-nixl-and-redis-lookup-preset
   model:
     # Consider using PVC for large models to avoid repeated downloads
-    modelArtifactURI: hf://meta-llama/Meta-Llama-3.1-70B-Instruct
-    modelName: "meta-llama/Meta-Llama-3.1-70B-Instruct"
+    modelArtifactURI: hf://Qwen/Qwen3-32B
+    modelName: "Qwen/Qwen3-32B"
   resources:
     limits:
       nvidia.com/gpu: 2  # 2 GPUs per pod
     requests:
-      cpu: "16"
-      memory: 80Gi
+      cpu: "10"
+      memory: 60Gi
       nvidia.com/gpu: 2
   prefill:
-    replicas: 2  # 2 prefill replicas
+    replicas: 0 # disable prefill for now
     extraArgs:
       - "--tensor-parallel-size"
       - "2"  # 2-way tensor parallelism per pod
       - "--distributed-executor-backend"
       - "mp"
       - "--max-model-len"
-      - "8192"
+      - "32000"
   decode:
-    replicas: 2  # 2 decode replicas  
+    replicas: 4  # 4 decode replicas  
     extraArgs:
       - "--tensor-parallel-size"
       - "2"  # 2-way tensor parallelism per pod
       - "--distributed-executor-backend"
       - "mp"
       - "--max-model-len"
-      - "8192"
+      - "32000"
 
 redis:
   enabled: true  # Enable Redis for advanced routing

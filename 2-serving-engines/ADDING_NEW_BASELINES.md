@@ -39,16 +39,45 @@ export HF_TOKEN="hf_your_token_here"
 
 ## Required Components
 
-### 1. Deployment Script (`2-serving-engines/your-baseline/run-your-baseline.sh`)
+### 1. Setup Script (`2-serving-engines/your-baseline/setup.sh`)
 
 ```bash
 #!/bin/bash
-# Validate HF_TOKEN (always required)
-if [ -z "$HF_TOKEN" ]; then
-    echo "Error: HF_TOKEN environment variable is not set"
+set -e
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
+echo "=== Your Baseline Setup ==="
+
+# 1. Run comprehensive cleanup of ALL baselines
+echo "Running comprehensive cleanup of ALL baselines..."
+COMMON_CLEANUP_SCRIPT="$SCRIPT_DIR/../common/cleanup-all-baselines.sh"
+if [ -f "$COMMON_CLEANUP_SCRIPT" ]; then
+    bash "$COMMON_CLEANUP_SCRIPT"
+else
+    echo "Error: Common cleanup script not found at $COMMON_CLEANUP_SCRIPT"
     exit 1
 fi
 
+# 2. Validate HF_TOKEN (always required)
+if [ -z "$HF_TOKEN" ]; then
+    echo "Error: HF_TOKEN environment variable is not set"
+    echo "Please set your Hugging Face token: export HF_TOKEN=your_token_here"
+    exit 1
+fi
+
+# 3. Install dependencies (if needed)
+echo "Installing dependencies..."
+# Your dependency installation logic here
+
+echo "=== Setup complete. Ready for deployment. ==="
+```
+
+### 2. Deployment Script (`2-serving-engines/your-baseline/run-your-baseline.sh`)
+
+```bash
+#!/bin/bash
 # Deploy your baseline
 echo "Deploying your baseline..."
 # Your deployment logic here
@@ -91,9 +120,17 @@ elif baseline_type == 'YourBaseline':
 **4. Installation function**:
 ```python
 def your_baseline_installation(baseline_config: Dict[str, Any]) -> None:
-    script_path = Path(__file__).parent / '2-serving-engines' / 'your-baseline' / 'run-your-baseline.sh'
-    os.chmod(script_path, 0o755)
-    subprocess.run([str(script_path)], check=True)
+    # For baselines with setup.sh + deployment pattern:
+    setup_script = Path(__file__).parent / '2-serving-engines' / 'your-baseline' / 'setup.sh'
+    deploy_script = Path(__file__).parent / '2-serving-engines' / 'your-baseline' / 'run-your-baseline.sh'
+    
+    # Run setup (includes comprehensive cleanup)
+    os.chmod(setup_script, 0o755)
+    subprocess.run([str(setup_script)], check=True)
+    
+    # Run deployment
+    os.chmod(deploy_script, 0o755)
+    subprocess.run([str(deploy_script)], check=True)
 ```
 
 ## Update Templates
@@ -108,14 +145,49 @@ def your_baseline_installation(baseline_config: Dict[str, Any]) -> None:
 
 **TEMPLATE-run-bench.yaml**: No changes needed.
 
+## Comprehensive Cleanup: CRITICAL
+
+**ALL baselines use a shared comprehensive cleanup** to prevent conflicts between different serving engines:
+
+- **Common cleanup script**: `2-serving-engines/common/cleanup-all-baselines.sh`
+- **Cleans up**: GPU processes, Helm releases, Kubernetes resources, namespaces, CRDs, Ray services, port forwarding
+- **Used by**: All setup.sh scripts and choose-and-deploy.sh scripts
+- **Prevents**: Kubernetes auto-recovery conflicts, resource leaks, port conflicts
+
+**Your setup.sh MUST call the common cleanup script** before deploying to ensure a clean environment.
+
 ## Service Readiness: CRITICAL
 
 **Workload generators start immediately after deployment** - your script MUST block until service ready:
 
+**Option 1: Use common wait script (recommended):**
+```bash
+# Step 3: Wait for service readiness using common wait script
+echo "Step 3: Waiting for service readiness..."
+COMMON_WAIT_SCRIPT="$SCRIPT_DIR/../common/wait-for-service.sh"
+if [ -f "$COMMON_WAIT_SCRIPT" ]; then
+    chmod +x "$COMMON_WAIT_SCRIPT"
+    bash "$COMMON_WAIT_SCRIPT" 900 "YourBaseline" "$SCRIPT_DIR"  # 15 minutes timeout
+else
+    echo "ERROR: Common wait script not found at $COMMON_WAIT_SCRIPT"
+    echo "Falling back to basic wait..."
+    bash wait.sh
+fi
+```
+
+**Option 2: Manual implementation:**
 ```bash
 timeout 300 bash -c 'until curl -s http://localhost:30080/v1/models; do sleep 5; done'
 if [ $? -ne 0 ]; then exit 1; fi
 ```
+
+The common wait script provides **much better observability** with:
+- ✅ Multiple endpoint checks (`/v1/models`, `/health`, `/`)
+- 📊 Port status monitoring
+- 🔍 Process diagnostics
+- 📝 Log tailing
+- ⏱️ Configurable timeout (default: 10 minutes)
+- 🎯 Baseline-specific naming
 
 ## Quick Start
 
