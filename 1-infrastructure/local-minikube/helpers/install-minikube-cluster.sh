@@ -80,17 +80,14 @@ if [ "$GPU_AVAILABLE" = true ]; then
 
     # Start minikube with GPU support.
     echo "Starting minikube with GPU support..."
-    minikube start --memory=max --driver=docker --container-runtime=docker --gpus=all --force --addons=nvidia-device-plugin
+    minikube start --driver=docker --container-runtime=docker --gpus=all --memory=no-limit --cpus=no-limit --force
 
     # Update kubeconfig context.
     echo "Updating kubeconfig context..."
     minikube update-context
 
-    # Install the GPU Operator via Helm.
-    echo "Adding NVIDIA helm repo and updating..."
-    helm repo add nvidia https://helm.ngc.nvidia.com/nvidia && helm repo update
-    echo "Installing GPU Operator..."
-    helm install --wait --generate-name -n gpu-operator --create-namespace nvidia/gpu-operator --version=v24.9.1
+    # Note: LLM-D doesn't require GPU Operator - minikube's built-in NVIDIA support is sufficient
+    echo "Minikube GPU setup complete - using built-in NVIDIA device plugin"
 else
     # No GPU: Start minikube without GPU support.
     echo "Starting minikube without GPU support..."

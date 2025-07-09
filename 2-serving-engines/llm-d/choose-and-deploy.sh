@@ -1,9 +1,31 @@
-#! /bin/bash
+#!/bin/bash
+set -e
 
 # Deploy LLM-D to a local minikube Cluster 
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
+
+# Check if configuration file argument is provided
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 <config-file-name>"
+    echo "Example: $0 comparison-baseline.yaml"
+    echo "Available configurations:"
+    ls -1 llmd_configurations/ 2>/dev/null || echo "  No configurations found in llmd_configurations/"
+    exit 1
+fi
+
+CONFIG_FILE="$1"
+
+echo "=== LLM-D Baseline Deployment ==="
+echo "Configuration: $CONFIG_FILE"
+
+# Step 1: Setup - Clean GPU processes, K8s environment, validate HF_TOKEN
+echo "Step 1: Running setup..."
+bash setup.sh "$CONFIG_FILE"
+
+# Step 2: Deployment - Run the original deployment logic
+echo "Step 2: Starting deployment..."
 
 # Determine OS and architecture
 OS=$(uname | tr '[:upper:]' '[:lower:]')
@@ -74,24 +96,23 @@ if ! command -v kustomize &> /dev/null; then
   rm kustomize.tar.gz
 fi
 
-kubectl delete crd \
-  authorizationpolicies.security.istio.io \
-  destinationrules.networking.istio.io \
-  envoyfilters.networking.istio.io \
-  gateways.networking.istio.io \
-  istiooperators.install.istio.io \
-  peerauthentications.security.istio.io \
-  proxyconfigs.networking.istio.io \
-  requestauthentications.security.istio.io \
-  serviceentries.networking.istio.io \
-  sidecars.networking.istio.io \
-  telemetries.telemetry.istio.io \
-  virtualservices.networking.istio.io \
-  workloadentries.networking.istio.io \
-  workloadgroups.networking.istio.io \
-  --ignore-not-found
+# Copy configuration file to examples directory
+kubectl config set-context --current --namespace=llm-d
+echo "Copying configuration file to examples directory..."
+cp "llmd_configurations/$CONFIG_FILE" "llm-d-deployer/quickstart/examples/"
 
-kubectl delete namespace istio-operator --ignore-not-found
-kubectl delete namespace istio-system --ignore-not-found 
+# Change to quickstart directory and run the installer
+echo "Deploying with configuration: $CONFIG_FILE"
+cd llm-d-deployer/quickstart
+bash llmd-installer.sh --minikube --values-file "examples/$CONFIG_FILE"
 
-# ./llmd-installer.sh --minikube --values-file examples/pd-nixl/<path to the config file above>
+# Return to script directory
+cd "$SCRIPT_DIR"
+
+# Step 3: Wait for service readiness
+echo "Step 3: Waiting for service readiness..."
+bash wait.sh
+
+nohup kubectl port-forward -n llm-d svc/llm-d-inference-gateway-istio 30080:80 &
+
+echo "=== LLM-D Deployment Complete ==="

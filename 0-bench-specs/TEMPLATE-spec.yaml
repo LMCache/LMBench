@@ -35,19 +35,19 @@ Serving:
 
   # Option 3: SGLang (Local-Flat infrastructure ONLY)
   - SGLang:
-      scriptName: basic-deployment.sh  # Script in 2-serving-engines/sglang/
+      scriptName: comparison-baseline.sh  # Script in 2-serving-engines/sglang/
       modelURL: meta-llama/Llama-3.1-8B-Instruct
       # NOTE: SGLang requires Local-Flat infrastructure. 
       # The script reads HF_TOKEN directly from environment variable.
 
   # Option 4: RayServe (Local-Flat infrastructure ONLY)
   - RayServe:
-      scriptName: basic-deployment.sh  # Script in 2-serving-engines/rayserve/
+      scriptName: comparison-baseline.sh  # Script in 2-serving-engines/rayserve/
       acceleratorType: H100  # e.g., H100, A100, V100, T4
       modelURL: meta-llama/Llama-3.1-70B-Instruct
       # NOTE: RayServe requires Local-Flat infrastructure.
       # The script reads HF_TOKEN directly from environment variable.
-      # Example: ./basic-deployment.sh H100
+      # Example: ./comparison-baseline.sh H100
 
   # Option 5: Dynamo
   - Dynamo:

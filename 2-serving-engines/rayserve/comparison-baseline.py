@@ -5,8 +5,8 @@ from ray.serve.llm import LLMConfig, build_openai_app
 
 # Check if accelerator type argument is provided
 if len(sys.argv) != 2:
-    print("Usage: python basic-deployment.py <accelerator_type>")
-    print("Example: python basic-deployment.py H100")
+    print("Usage: python comparison-baseline.py <accelerator_type>")
+    print("Example: python comparison-baseline.py H100")
     sys.exit(1)
 
 accelerator_type = sys.argv[1]

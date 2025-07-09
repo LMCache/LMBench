@@ -156,6 +156,13 @@ def validate_single_spec_config(config: Dict[str, Any], file_path: str) -> Dict[
                 raise ValueError(f"modelURL must be specified for Direct-ProductionStack baseline {i} in {file_path}")
             if not hf_token:
                 raise ValueError(f"hf_token must be specified for Direct-ProductionStack baseline {i} in {file_path}")
+        elif baseline_type == 'LLM-D':
+            config_selection = baseline_config.get('configSelection')
+            model_url = baseline_config.get('modelURL')
+            if not config_selection:
+                raise ValueError(f"configSelection must be specified for LLM-D baseline {i} in {file_path}")
+            if not model_url:
+                raise ValueError(f"modelURL must be specified for LLM-D baseline {i} in {file_path}")
         elif baseline_type == 'Dynamo':
             pass  # No validation needed for Dynamo yet
         else:
@@ -304,6 +311,10 @@ def generate_baseline_key(serving_config: Dict[str, Any]) -> str:
         # Convert kubernetesConfigSelection filepath where "/" becomes "_"
         k8s_config = baseline_config.get('kubernetesConfigSelection', '')
         return k8s_config.replace('/', '_').replace('.yaml', '')
+    elif baseline_type == 'LLM-D':
+        # llmd_{config_name} based on configSelection
+        config_selection = baseline_config.get('configSelection', '')
+        return f"llmd_{config_selection.replace('/', '_').replace('.yaml', '')}"
     elif baseline_type == 'Dynamo':
         return 'dynamo'
     else:
@@ -362,6 +373,14 @@ def setup_single_baseline(serving_config: Dict[str, Any], global_config: Dict[st
         MODEL_URL = model_url
         HF_TOKEN = hf_token
         kubernetes_application(baseline_config, global_config)
+
+    elif baseline_type == 'LLM-D':
+        model_url = baseline_config.get('modelURL')
+        if not model_url:
+            raise ValueError(f"modelURL must be specified for LLM-D baseline {serving_index}")
+        MODEL_URL = model_url
+        # HF_TOKEN is read directly from environment variable by the script
+        llmd_installation(baseline_config)
 
     elif baseline_type == 'Dynamo':
         # TODO: Implement Dynamo setup
@@ -461,6 +480,49 @@ def rayserve_installation(rayserve_config: Dict[str, Any]) -> None:
         time.sleep(5)
     
     raise RuntimeError("RayServe service failed to become ready within timeout")
+
+def llmd_installation(llmd_config: Dict[str, Any]) -> None:
+    """
+    Deploy LLM-D using the configured script for LocalMinikube deployment
+    """
+    config_selection = llmd_config.get('configSelection')
+    if not config_selection:
+        raise ValueError("configSelection must be specified for LLM-D")
+    
+    # Script reads HF_TOKEN directly from environment variable
+    if not os.environ.get('HF_TOKEN'):
+        raise ValueError("HF_TOKEN environment variable is not set")
+
+    # Run the LLM-D choose-and-deploy script with config selection
+    script_path = Path(__file__).parent / '2-serving-engines' / 'llm-d' / 'choose-and-deploy.sh'
+    if not script_path.exists():
+        raise FileNotFoundError(f"LLM-D script not found: {script_path}")
+    
+    os.chmod(script_path, 0o755)
+    print(f"Running LLM-D script with config: {config_selection}")
+    
+    # CRITICAL: Block until service ready
+    print("Deploying LLM-D and waiting for service readiness...")
+    subprocess.run([str(script_path), config_selection], check=True)
+    
+    # The choose-and-deploy.sh script already includes wait.sh, so service should be ready
+    # Additional verification that the service is accessible
+    import time
+    time.sleep(5)  # Give the service a moment after deployment completion
+    timeout = 60  # Short timeout since choose-and-deploy.sh already waited
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            import requests
+            response = requests.get('http://localhost:30080/v1/models', timeout=5)
+            if response.status_code == 200:
+                print("LLM-D service is ready and accessible")
+                return
+        except:
+            pass
+        time.sleep(5)
+    
+    raise RuntimeError("LLM-D service failed to become accessible within timeout")
 
 # Note: The old complex SGLang YAML overriding function has been removed 
 # as we now use simple script-based deployment for Local-Flat infrastructure

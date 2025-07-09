@@ -29,4 +29,4 @@ pip install xgrammar==0.1.19 pynvml==12.0.0 botocore
 
 # NOTE: rayserve automatically waits until workers are ready
 
-nohup python basic-deployment.py "$ACCELERATOR_TYPE" &
+nohup python comparison-baseline.py "$ACCELERATOR_TYPE" &
