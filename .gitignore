@@ -5,6 +5,12 @@ __pycache__/
 
 **/*.out
 
+# Virtual environments
+**/*venv*
+
+# Ray junk
+**/=*
+
 # Ignore ALL csv and json and png files in 4-latest-results/
 4-latest-results/**/*.csv
 4-latest-results/**/*.json

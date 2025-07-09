@@ -67,6 +67,11 @@ cleanup_minikube() {
   kubectl config delete-cluster minikube 2>/dev/null || true
   kubectl config delete-user minikube 2>/dev/null || true
 
+  # Prune minikube docker images
+  eval $(minikube docker-env)
+  docker system prune -a --volumes -f
+  eval $(minikube docker-env -u)
+
   # Clean up any remaining minikube docker networks
   docker network ls --filter name=minikube --format "{{.ID}}" | xargs -r docker network rm 2>/dev/null || true
 

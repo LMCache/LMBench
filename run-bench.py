@@ -123,9 +123,22 @@ def validate_single_spec_config(config: Dict[str, Any], file_path: str) -> Dict[
         print(f"Validating serving baseline {i}: {baseline_type} in {file_path}")
 
         if baseline_type == 'SGLang':
-            hf_token = baseline_config.get('hf_token')
-            if not hf_token:
-                raise ValueError(f"hf_token must be specified for SGLang baseline {i} in {file_path}")
+            script_name = baseline_config.get('scriptName')
+            model_url = baseline_config.get('modelURL')
+            if not script_name:
+                raise ValueError(f"scriptName must be specified for SGLang baseline {i} in {file_path}")
+            if not model_url:
+                raise ValueError(f"modelURL must be specified for SGLang baseline {i} in {file_path}")
+        elif baseline_type == 'RayServe':
+            script_name = baseline_config.get('scriptName')
+            accelerator_type = baseline_config.get('acceleratorType')
+            model_url = baseline_config.get('modelURL')
+            if not script_name:
+                raise ValueError(f"scriptName must be specified for RayServe baseline {i} in {file_path}")
+            if not accelerator_type:
+                raise ValueError(f"acceleratorType must be specified for RayServe baseline {i} in {file_path}")
+            if not model_url:
+                raise ValueError(f"modelURL must be specified for RayServe baseline {i} in {file_path}")
         elif baseline_type == 'Helm-ProductionStack':
             helm_config = baseline_config.get('helmConfigSelection', '')
             hf_token = baseline_config.get('hf_token')
@@ -145,13 +158,6 @@ def validate_single_spec_config(config: Dict[str, Any], file_path: str) -> Dict[
                 raise ValueError(f"hf_token must be specified for Direct-ProductionStack baseline {i} in {file_path}")
         elif baseline_type == 'Dynamo':
             pass  # No validation needed for Dynamo yet
-        elif baseline_type == 'KubeRay':
-            model_url = baseline_config.get('modelURL')
-            hf_token = baseline_config.get('hf_token')
-            if not model_url:
-                raise ValueError(f"modelURL must be specified for KubeRay baseline {i} in {file_path}")
-            if not hf_token:
-                raise ValueError(f"hf_token must be specified for KubeRay baseline {i} in {file_path}")
         else:
             raise ValueError(f"Unsupported baseline type: {baseline_type} in baseline {i} in {file_path}")
 
@@ -285,7 +291,11 @@ def generate_baseline_key(serving_config: Dict[str, Any]) -> str:
     baseline_config = serving_config[baseline_type]
 
     if baseline_type == 'SGLang':
-        return 'sglang'
+        script_name = baseline_config.get('scriptName', '')
+        return f"sglang_{script_name.replace('.sh', '').replace('-', '_')}"
+    elif baseline_type == 'RayServe':
+        script_name = baseline_config.get('scriptName', '')
+        return f"rayserve_{script_name.replace('.sh', '').replace('-', '_')}"
     elif baseline_type == 'Helm-ProductionStack':
         # helm_{config_name} based on helmConfigSelection
         helm_config = baseline_config.get('helmConfigSelection', '')
@@ -296,8 +306,6 @@ def generate_baseline_key(serving_config: Dict[str, Any]) -> str:
         return k8s_config.replace('/', '_').replace('.yaml', '')
     elif baseline_type == 'Dynamo':
         return 'dynamo'
-    elif baseline_type == 'KubeRay':
-        return 'rayserve'
     else:
         raise ValueError(f"Unsupported baseline type: {baseline_type}")
 
@@ -319,14 +327,19 @@ def setup_single_baseline(serving_config: Dict[str, Any], global_config: Dict[st
 
     if baseline_type == 'SGLang':
         model_url = baseline_config.get('modelURL')
-        hf_token = baseline_config.get('hf_token')
         if not model_url:
             raise ValueError(f"modelURL must be specified for SGLang baseline {serving_index}")
-        if not hf_token:
-            raise ValueError(f"hf_token must be specified for SGLang baseline {serving_index}")
         MODEL_URL = model_url
-        HF_TOKEN = hf_token
+        # HF_TOKEN is read directly from environment variable by the script
         sglang_installation(baseline_config)
+
+    elif baseline_type == 'RayServe':
+        model_url = baseline_config.get('modelURL')
+        if not model_url:
+            raise ValueError(f"modelURL must be specified for RayServe baseline {serving_index}")
+        MODEL_URL = model_url
+        # HF_TOKEN is read directly from environment variable by the script
+        rayserve_installation(baseline_config)
 
     elif baseline_type == 'Helm-ProductionStack':
         model_url = baseline_config.get('modelURL')
@@ -354,17 +367,6 @@ def setup_single_baseline(serving_config: Dict[str, Any], global_config: Dict[st
         # TODO: Implement Dynamo setup
         pass
 
-    elif baseline_type == 'KubeRay':
-        model_url = baseline_config.get('modelURL')
-        hf_token = baseline_config.get('hf_token')
-        if not model_url:
-            raise ValueError(f"modelURL must be specified for KubeRay baseline {serving_index}")
-        if not hf_token:
-            raise ValueError(f"hf_token must be specified for KubeRay baseline {serving_index}")
-        MODEL_URL = model_url
-        HF_TOKEN = hf_token
-        kuberay_installation(baseline_config)
-
     else:
         raise ValueError(f"Unsupported baseline type: {baseline_type}")
 
@@ -375,120 +377,93 @@ def setup_baseline(config: Dict[str, Any]) -> None:
 
 def sglang_installation(sglang_config: Dict[str, Any]) -> None:
     """
-    Deploy SGLang using the configured parameters
+    Deploy SGLang using the configured script for Local-Flat deployment
     """
-    base_yaml_file = Path(__file__).parent / '2-serving-engines' / 'sglang' / 'k8s-sglang-distributed-sts.yaml'
+    script_name = sglang_config.get('scriptName')
+    if not script_name:
+        raise ValueError("scriptName must be specified for SGLang")
+    
+    # Script reads HF_TOKEN directly from environment variable
+    if not os.environ.get('HF_TOKEN'):
+        raise ValueError("HF_TOKEN environment variable is not set")
 
-    if not base_yaml_file.exists():
-        raise FileNotFoundError(f"Base YAML file not found: {base_yaml_file}")
+    # Run the specified SGLang script
+    script_path = Path(__file__).parent / '2-serving-engines' / 'sglang' / script_name
+    if not script_path.exists():
+        raise FileNotFoundError(f"SGLang script not found: {script_path}")
+    
+    os.chmod(script_path, 0o755)
+    print(f"Running SGLang script: {script_name}")
+    
+    # CRITICAL: Block until service ready
+    print("Waiting for service readiness...")
+    subprocess.run([str(script_path)], check=True)
+    
+    # Wait for the service to be ready
+    import time
+    time.sleep(5)  # Give the service a moment to start
+    timeout = 300
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            import requests
+            response = requests.get('http://localhost:30080/v1/models', timeout=5)
+            if response.status_code == 200:
+                print("SGLang service is ready")
+                return
+        except:
+            pass
+        time.sleep(5)
+    
+    raise RuntimeError("SGLang service failed to become ready within timeout")
 
-    with open(base_yaml_file, 'r') as f:
-        base_config = yaml.safe_load_all(f)
-        # Convert generator to list to allow multiple iterations
-        base_config_list = list(base_config)
-
-    updated_config_list = _override_sglang_yaml(base_config_list, sglang_config)
-
-    # dump the updated config to the latest results folder for visibility
-    output_path = Path(__file__).parent / "4-latest-results" / "generated-sglang-config.yaml"
-    with open(output_path, 'w') as out:
-        yaml.dump_all(updated_config_list, out, default_flow_style=False)
-        print(f"Generated SGLang config written to {output_path}")
-
-    # Run the sglang installation script
-    install_script = Path(__file__).parent / '2-serving-engines' / 'sglang' / 'run-sglang.sh'
-    os.chmod(install_script, 0o755)
-    print("Running SGLang install script...")
-    subprocess.run([str(install_script)], check=True)
-
-def _override_sglang_yaml(base_config_list: list, override: Dict[str, Any]) -> list:
+def rayserve_installation(rayserve_config: Dict[str, Any]) -> None:
     """
-    Override the base SGLang YAML configuration with values from the override dict
+    Deploy RayServe using the configured script for Local-Flat deployment
     """
-    # Make a deep copy to avoid modifying the original
-    updated_config_list = []
-    for doc in base_config_list:
-        updated_config_list.append(doc.copy() if doc else {})
+    script_name = rayserve_config.get('scriptName')
+    accelerator_type = rayserve_config.get('acceleratorType')
+    if not script_name:
+        raise ValueError("scriptName must be specified for RayServe")
+    if not accelerator_type:
+        raise ValueError("acceleratorType must be specified for RayServe")
+    
+    # Script reads HF_TOKEN directly from environment variable
+    if not os.environ.get('HF_TOKEN'):
+        raise ValueError("HF_TOKEN environment variable is not set")
 
-    # Find the StatefulSet document
-    for doc in updated_config_list:
-        if doc.get('kind') == 'StatefulSet':
-            # Apply overrides to the StatefulSet
-            try:
-                # Handle replicas
-                if 'replicaCount' in override:
-                    doc['spec']['replicas'] = override['replicaCount']
+    # Run the specified RayServe script with accelerator type
+    script_path = Path(__file__).parent / '2-serving-engines' / 'rayserve' / script_name
+    if not script_path.exists():
+        raise FileNotFoundError(f"RayServe script not found: {script_path}")
+    
+    os.chmod(script_path, 0o755)
+    print(f"Running RayServe script: {script_name} with accelerator type: {accelerator_type}")
+    
+    # CRITICAL: Block until service ready
+    print("Waiting for service readiness...")
+    subprocess.run([str(script_path), accelerator_type], check=True)
+    
+    # Wait for the service to be ready
+    import time
+    time.sleep(5)  # Give the service a moment to start
+    timeout = 300
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            import requests
+            response = requests.get('http://localhost:30080/v1/models', timeout=5)
+            if response.status_code == 200:
+                print("RayServe service is ready")
+                return
+        except:
+            pass
+        time.sleep(5)
+    
+    raise RuntimeError("RayServe service failed to become ready within timeout")
 
-                # Handle container configuration
-                container = doc['spec']['template']['spec']['containers'][0]
-
-                # Replace model URL placeholder
-                for i, arg in enumerate(container['args']):
-                    if arg == 'MODEL_URL_PLACEHOLDER':
-                        container['args'][i] = override.get('modelURL')
-
-                # Replace HF token
-                for env in container['env']:
-                    if env['name'] == 'HF_TOKEN':
-                        env['value'] = override.get('hf_token')
-
-                # Handle context length
-                if 'contextLength' in override:
-                    for i, arg in enumerate(container['args']):
-                        if arg == '32768' and container['args'][i-1] == '--context-length':
-                            container['args'][i] = str(override['contextLength'])
-
-                # Handle tensor parallel size
-                if 'tensorParallelSize' in override:
-                    tensor_parallel_found = False
-                    for i, arg in enumerate(container['args']):
-                        if arg == '1' and container['args'][i-1] == '--tensor-parallel-size':
-                            container['args'][i] = str(override['tensorParallelSize'])
-                            tensor_parallel_found = True
-                            break
-
-                    # If tensor parallel args don't exist, add them
-                    if not tensor_parallel_found:
-                        # Find the index after context-length
-                        for i, arg in enumerate(container['args']):
-                            if arg == '--context-length':
-                                # Add after the context length value
-                                insert_idx = i + 2
-                                container['args'].insert(insert_idx, '--tensor-parallel-size')
-                                container['args'].insert(insert_idx + 1, str(override['tensorParallelSize']))
-                                break
-
-                # Handle resources
-                if 'numGPUs' in override:
-                    container['resources']['requests']['nvidia.com/gpu'] = override['numGPUs']
-                    container['resources']['limits']['nvidia.com/gpu'] = override['numGPUs']
-
-                if 'numCPUs' in override:
-                    container['resources']['requests']['cpu'] = str(override['numCPUs'])
-                    container['resources']['limits']['cpu'] = str(override['numCPUs'])
-
-                if 'requestMemory' in override:
-                    container['resources']['requests']['memory'] = override['requestMemory']
-                    container['resources']['limits']['memory'] = override['requestMemory']
-
-                # Handle SHM size
-                for volume in doc['spec']['template']['spec']['volumes']:
-                    if volume['name'] == 'shm':
-                        if 'shmSize' in override:
-                            volume['emptyDir']['sizeLimit'] = override['shmSize']
-            except (KeyError, IndexError, TypeError) as e:
-                raise ValueError(f"Error applying overrides to StatefulSet: {e}")
-
-        # Find the PVC document
-        elif doc.get('kind') == 'PersistentVolumeClaim':
-            # Apply overrides to the PVC
-            try:
-                if 'cacheSize' in override:
-                    doc['spec']['resources']['requests']['storage'] = override['cacheSize']
-            except (KeyError, IndexError, TypeError) as e:
-                raise ValueError(f"Error applying overrides to PVC: {e}")
-
-    return updated_config_list
+# Note: The old complex SGLang YAML overriding function has been removed 
+# as we now use simple script-based deployment for Local-Flat infrastructure
 
 def helm_installation_with_config(prodstack_config: Dict[str, Any], global_config: Dict[str, Any]) -> None:
     """
@@ -567,35 +542,7 @@ def kubernetes_application(direct_production_stack_config: Dict[str, Any], globa
     # The patching of deployments to the appropriate node pools is now handled directly
     # in the choose-and-deploy.sh script before waiting for pods to be ready
 
-def kuberay_installation(kuberay_config: Dict[str, Any]) -> None:
-    """
-    Deploy KubeRay using the configured parameters
-    """
-    # Generate the KubeRay configuration
-    generate_script = Path(__file__).parent / '2-serving-engines' / 'kuberay' / 'generate-kuberay-config.sh'
 
-    if not generate_script.exists():
-        raise FileNotFoundError(f"KubeRay config generation script not found: {generate_script}")
-
-    # Make the script executable
-    os.chmod(generate_script, 0o755)
-
-    # Generate the KubeRay configuration
-    print("Generating KubeRay configuration...")
-    subprocess.run([str(generate_script)], check=True)
-
-    # Run the KubeRay installation script
-    install_script = Path(__file__).parent / '2-serving-engines' / 'kuberay' / 'run-kuberay.sh'
-
-    if not install_script.exists():
-        raise FileNotFoundError(f"KubeRay installation script not found: {install_script}")
-
-    # Make the script executable
-    os.chmod(install_script, 0o755)
-
-    # Install KubeRay
-    print("Running KubeRay installation...")
-    subprocess.run([str(install_script)], check=True)
 
 # 3. Run the specified workload
 def run_workload(config: Dict[str, Any]) -> None:
