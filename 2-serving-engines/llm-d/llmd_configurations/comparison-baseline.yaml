@@ -19,7 +19,7 @@ sampleApplication:
       - "--distributed-executor-backend"
       - "mp"
       - "--max-model-len"
-      - "32000"
+      - "26000"
   decode:
     replicas: 4  # 4 decode replicas  
     extraArgs:

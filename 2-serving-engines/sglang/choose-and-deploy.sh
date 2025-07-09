@@ -35,7 +35,7 @@ fi
 
 # Run the deployment script
 echo "Running deployment script: $SCRIPT_NAME"
-nohup bash "$SCRIPT_NAME" > sglang.log 2>&1 &
+bash "$SCRIPT_NAME"
 
 echo "SGLang deployment started."
 

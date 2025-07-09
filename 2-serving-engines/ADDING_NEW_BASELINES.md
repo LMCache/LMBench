@@ -7,14 +7,14 @@ Serving baselines expose an OpenAI-compatible endpoint on `localhost:30080` for 
 **Infrastructure Types:**
 - **LMCacheGKE**: Google Kubernetes Engine with GPU nodes
 - **LocalMinikube**: Local Kubernetes for development/testing  
-- **Local-Flat**: Direct script deployment without containers
+- **Local-Flat**: Direct script deployment without containers (NOTE: infrastructure that is intended to run on `Local-Flat` can technically also run on `LocalMinikube`)
 
 ## Compatibility Matrix
 
 | Infrastructure \ Baseline | SGLang | Helm-ProductionStack | Direct-ProductionStack | Dynamo | RayServe | LLM-D |
 |---------------------------|--------|---------------------|----------------------|--------|----------|-------|
 | **LMCacheGKE**            | ❌     | ✅                  | ✅                   | ❌     | ❌       | ❌      |
-| **LocalMinikube**         | ❌     | ✅                  | ✅                   | ❌     | ❌       | ✅      |
+| **LocalMinikube**         | ✔️     | ✅                  | ✅                   | ✔️     | ✔️       | ✅      |
 | **Local-Flat**            | ✅     | ❌                  | ❌                   | ✅     | ✅       | ❌      |
 
 **Note**: When adding new baselines or infrastructure, please update this compatibility matrix.

@@ -17,7 +17,7 @@ Common:
   model: Qwen/Qwen3-32B
   router: kv
   block-size: 256
-  max-model-len: 32000
+  max-model-len: 26000
   kv-transfer-config: '{"kv_connector":"DynamoNixlConnector"}'
 
 Frontend:
@@ -35,7 +35,7 @@ Router:
 
 VllmWorker:
   enforce-eager: true
-  max-num-batched-tokens: 32000
+  max-num-batched-tokens: 26000
   enable-prefix-caching: true
   tensor-parallel-size: 2
   remote-prefill: false
@@ -47,7 +47,7 @@ VllmWorker:
   common-configs: [model, block-size, max-model-len, router, kv-transfer-config]
 
 PrefillWorker:
-  max-num-batched-tokens: 32000
+  max-num-batched-tokens: 26000
   tensor-parallel-size: 2
   ServiceArgs:
     workers: 0  # Disable prefill worker to match LLM-D pattern

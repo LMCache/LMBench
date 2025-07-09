@@ -29,6 +29,7 @@ llm_config = LLMConfig(
     accelerator_type=accelerator_type,
     engine_kwargs=dict(
         tensor_parallel_size=2,
+        max_model_len=26000,
     )
 )
 

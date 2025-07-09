@@ -11,6 +11,8 @@ __pycache__/
 # Ray junk
 **/=*
 
+**/*.pid
+
 # Ignore ALL csv and json and png files in 4-latest-results/
 4-latest-results/**/*.csv
 4-latest-results/**/*.json

@@ -1,4 +1,4 @@
-Name: OpenSourceComparisons
+Name: OSS-Comp-4-Qwen32B-TP2-H100
 
 # Suggested Infrastructure (in run-bench.yaml)
 # 1-infrastructure:
@@ -11,9 +11,9 @@ Serving:
       helmConfigSelection: open-source/comparison-baseline.yaml
       hf_token: <YOUR_HF_TOKEN>
       modelURL: Qwen/Qwen3-32B
-  - Dynamo:
-      configSelection: comparison-baseline.yaml
-      modelURL: Qwen/Qwen3-32B
+#   - SGLang:
+#       scriptName: comparison-baseline.sh
+#       modelURL: Qwen/Qwen3-32B
   - LLM-D:
       configSelection: comparison-baseline.yaml
       modelURL: Qwen/Qwen3-32B
@@ -21,8 +21,8 @@ Serving:
       scriptName: comparison-baseline.sh
       acceleratorType: H100
       modelURL: Qwen/Qwen3-32B
-  - SGLang:
-      scriptName: comparison-baseline.sh
+  - Dynamo:
+      configSelection: comparison-baseline.yaml
       modelURL: Qwen/Qwen3-32B
 
 Workload:

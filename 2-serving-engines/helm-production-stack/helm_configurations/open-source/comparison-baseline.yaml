@@ -14,8 +14,9 @@ servingEngineSpec:
       - ReadWriteOnce
     vllmConfig:
       enablePrefixCaching: true
-      maxModelLen: 32000
+      maxModelLen: 26000
       v1: 1
+      tensorParallelSize: 2
       extraArgs:
         - "--tensor-parallel-size"
         - "2"
@@ -23,6 +24,7 @@ servingEngineSpec:
       enabled: true
       cpuOffloadingBufferSize: "60"
     hf_token: <YOUR_HF_TOKEN>
+    shmSize: "40Gi"
 
 routerSpec:
   repository: "lmcache/lmstack-router"

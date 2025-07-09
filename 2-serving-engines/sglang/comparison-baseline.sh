@@ -11,6 +11,7 @@ export PATH=/usr/local/cuda/bin:$PATH
 # need to be in a virtual environment to even start lmbench
 pip install "sglang[all]>=0.4.9"
 pip install sglang-router
+pip install sentencepiece
 
 # NOTE: sglang router automatically waits until workers are ready
 # NOTE: the default timeout is 300 seconds
@@ -19,5 +20,12 @@ pip install sglang-router
 # python -m sglang.launch_server --model-path meta-llama/Meta-Llama-3-8B-Instruct
 # python -m sglang_router.launch_server --model-path meta-llama/Meta-Llama-3.1-8B-Instruct --dp-size 1 --tp 1 --host 0.0.0.0 --port 30080
 
-nohup python -m sglang_router.launch_server --model-path Qwen/Qwen3-32B --dp-size 4 --tp 2 --host 0.0.0.0 --port 30080 --context-length 32000 &
+nohup python -m sglang_router.launch_server --model-path Qwen/Qwen3-32B --dp-size 4 --tp 2 --host 0.0.0.0 --port 30080 --context-length 26000 > sglang.log 2>&1 &
+
+# Save the PID for monitoring
+echo $! > sglang.pid
+
+# CRITICAL: Block until service ready
+echo "Waiting for SGLang service readiness..."
+bash wait.sh
 

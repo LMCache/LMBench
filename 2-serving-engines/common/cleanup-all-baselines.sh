@@ -159,6 +159,11 @@ if command -v kubectl &> /dev/null && kubectl cluster-info &>/dev/null; then
     done
     
     echo "Kubernetes resources cleaned up."
+    
+    # Reset kubectl context to default namespace to avoid namespace conflicts
+    echo "Resetting kubectl context to use default namespace..."
+    kubectl config set-context --current --namespace=default 2>/dev/null || true
+    echo "kubectl context reset to default namespace."
 else
     echo "Cannot connect to Kubernetes cluster, skipping Kubernetes cleanup"
 fi

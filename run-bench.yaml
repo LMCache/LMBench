@@ -1,5 +1,5 @@
 0-bench-specs:
-  - single-debug/1-lmcache-spec.yaml
+  # - single-debug/1-lmcache-spec.yaml
   # - helm/debug-prefix-caching.yaml
   # - helm/vllm-benchmark-serving-workloads.yaml
   # - helm/basic-spec.yaml # really good for debugging workloads
@@ -10,7 +10,7 @@
   # - layerwise/layerwise-no-prefix-spec.yaml
   # - layerwise/layerwise-debug-w.yaml
   # - single-debug/llmd-basic-spec.yaml
-  - open-source/comparisons.yaml
+  - open-source-comparisons/all.yaml
 
 1-infrastructure:
   Location: LocalMinikube
