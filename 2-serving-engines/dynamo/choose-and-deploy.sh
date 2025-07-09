@@ -57,9 +57,10 @@ pip install vllm pydantic fastapi uvicorn jinja2 aiohttp prometheus-client
 # Step 3: Install dynamo from PyPI and get compatible examples
 echo "Step 3: Installing dynamo from PyPI..."
 
-# Install the latest dynamo package from PyPI
-echo "Installing ai-dynamo from PyPI..."
+# Install dynamo package as recommended by official documentation
+echo "Installing ai-dynamo package for stable CLI and runtime..."
 pip install "ai-dynamo[all]" --upgrade
+echo "Dynamo package installed - will use official CLI with local repository examples"
 
 # Clone dynamo repository and find compatible examples
 echo "Cloning dynamo repository for examples..."
@@ -68,16 +69,34 @@ rm -rf "$DYNAMO_REPO_DIR"
 git clone https://github.com/ai-dynamo/dynamo.git "$DYNAMO_REPO_DIR"
 cd "$DYNAMO_REPO_DIR"
 
-# Try to find a compatible version by checking recent tags
-echo "Looking for compatible version..."
-git tag -l | tail -10
-echo "Checking out latest stable version..."
-LATEST_TAG=$(git tag -l | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | tail -1)
-if [ -n "$LATEST_TAG" ]; then
-    echo "Found tag: $LATEST_TAG, checking it out..."
-    git checkout "$LATEST_TAG"
+# Use latest stable release as recommended by official documentation
+echo "Checking out latest stable release as recommended by official documentation..."
+LATEST_RELEASE=$(git describe --tags $(git rev-list --tags --max-count=1))
+echo "Latest release found: $LATEST_RELEASE"
+git checkout "$LATEST_RELEASE"
+echo "Checked out stable release: $LATEST_RELEASE"
+
+# Apply required protocol modification AFTER checkout (since checkout erases local changes)
+echo "Applying required protocol modification for ignore_eos=True..."
+PROTOCOL_FILE="examples/llm/utils/protocol.py"
+if [ -f "$PROTOCOL_FILE" ]; then
+    # Check if modification is already applied
+    if ! grep -q "v.ignore_eos = True" "$PROTOCOL_FILE"; then
+        echo "Modifying $PROTOCOL_FILE to force ignore_eos=True..."
+        # Create a backup
+        cp "$PROTOCOL_FILE" "$PROTOCOL_FILE.backup"
+        
+        # Apply the modification using sed
+        sed -i '/if isinstance(v, dict):/,/return v/ {
+            /return v/i\        v.ignore_eos = True
+        }' "$PROTOCOL_FILE"
+        
+        echo "Protocol modification applied successfully"
+    else
+        echo "Protocol modification already applied"
+    fi
 else
-    echo "No stable version tag found, using main branch"
+    echo "WARNING: $PROTOCOL_FILE not found - this may cause issues"
 fi
 
 # Return to script directory
@@ -97,15 +116,15 @@ if [ -d "$TF_SYSTEM_PATH" ]; then
 fi
 echo "Set comprehensive TensorFlow avoidance environment variables"
 
-# Verify dynamo installation
-echo "Verifying dynamo installation..."
+# Verify dynamo installation and repository setup
+echo "Verifying dynamo installation and repository setup..."
 if ! command -v dynamo >/dev/null 2>&1; then
     echo "ERROR: dynamo command not found after installation"
-    echo "Trying to reinstall dynamo..."
-    pip install "ai-dynamo[all]" --upgrade --force-reinstall
+    exit 1
 fi
 
-dynamo --version || echo "Could not get dynamo version"
+dynamo --version
+echo "Dynamo CLI ready - using official installation with local repository examples"
 
 # Set the path to the dynamo configurations directory  
 DYNAMO_CONFIG_DIR="$SCRIPT_DIR/dynamo_configurations"
@@ -148,9 +167,9 @@ docker compose -f deploy/metrics/docker-compose.yml ps
 # Step 5: Start Dynamo serve following official documentation
 echo "Step 5: Starting Dynamo serve..."
 
-# Set DYNAMO_HOME as required for non-dockerized deployment
+# Set DYNAMO_HOME as required by official documentation
 export DYNAMO_HOME="$DYNAMO_REPO_DIR"
-echo "Setting DYNAMO_HOME=$DYNAMO_HOME"
+echo "Setting DYNAMO_HOME=$DYNAMO_HOME (as required by official docs)"
 
 cd "$DYNAMO_HOME/examples/llm"
 
@@ -186,34 +205,16 @@ export CUDA_LIB_DIR="/usr/local/cuda/lib64"
 export LD_LIBRARY_PATH="$CUDA_LIB_DIR:$LD_LIBRARY_PATH"
 export LD_PRELOAD="$CUDA_LIB_DIR/libcublas.so.12 $CUDA_LIB_DIR/libcusolver.so.11"
 
-# Use the disaggregated deployment pattern from team documentation
-# Following: dynamo serve graphs.disagg:Frontend -f ./configs/disagg.yaml
-echo "Starting dynamo serve using disaggregated deployment pattern..."
+# Use the official disaggregated deployment pattern
+# Following official docs: dynamo serve graphs.disagg:Frontend -f ./configs/disagg.yaml
+echo "Starting dynamo serve using official disaggregated deployment pattern..."
 echo "Command: dynamo serve graphs.disagg:Frontend -f ./configs/$CONFIG_FILENAME"
-echo "This follows the team documentation for disaggregated deployment"
+echo "This follows the official documentation with team's proven configuration"
 
-# Apply required protocol modification from team documentation
-echo "Applying required protocol modification for ignore_eos=True..."
-if [ -f "utils/protocol.py" ]; then
-    # Check if modification is already applied
-    if ! grep -q "v.ignore_eos = True" utils/protocol.py; then
-        echo "Modifying utils/protocol.py to force ignore_eos=True..."
-        # Create a backup
-        cp utils/protocol.py utils/protocol.py.backup
-        
-        # Apply the modification using sed
-        sed -i '/if isinstance(v, dict):/a\        v.ignore_eos = True' utils/protocol.py
-        
-        echo "Protocol modification applied successfully"
-    else
-        echo "Protocol modification already applied"
-    fi
-else
-    echo "WARNING: utils/protocol.py not found - this may cause issues"
-fi
+# Protocol modification already applied after checkout above
 
-# Start with detailed logging
-echo "Starting dynamo serve process..."
+# Start with detailed logging using official dynamo CLI
+echo "Starting dynamo serve process using official CLI..."
 nohup dynamo serve graphs.disagg:Frontend -f "./configs/$CONFIG_FILENAME" > "$SCRIPT_DIR/dynamo_serve.log" 2>&1 &
 DYNAMO_PID=$!
 

@@ -29,10 +29,8 @@ Processor:
   common-configs: [model, block-size]
 
 VllmWorker:
-  remote-prefill: true
-  conditional-disagg: true
-  max-local-prefill-length: 10
-  max-prefill-queue-size: 2
+  remote-prefill: false
+  conditional-disagg: false
   ServiceArgs:
     workers: 1
     resources:
@@ -40,11 +38,8 @@ VllmWorker:
   common-configs: [model, block-size, max-model-len, kv-transfer-config]
 
 PrefillWorker:
-  max-num-batched-tokens: 16384
   ServiceArgs:
-    workers: 1
-    resources:
-      gpu: '1'
+    workers: 0  # Disable prefill worker for single-GPU deployment
   common-configs: [model, block-size, max-model-len, kv-transfer-config]
 
 Planner:
