@@ -16,11 +16,28 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 LOG_FILE="$SCRIPT_DIR/sglang.log"
 PID_FILE="$SCRIPT_DIR/sglang.pid"
 
-# Function to show recent logs
-show_recent_logs() {
+# Function to show recent logs with more context - brief version for frequent polling
+show_recent_logs_brief() {
+    if [ -f "$LOG_FILE" ]; then
+        # Show last 3 non-empty lines for frequent polling
+        RECENT_LOGS=$(tail -10 "$LOG_FILE" 2>/dev/null | grep -v "^$" | tail -3)
+        if [ -n "$RECENT_LOGS" ]; then
+            echo "📝 Recent logs:"
+            echo "$RECENT_LOGS" | sed 's/^/  /'
+        else
+            LOG_SIZE=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0")
+            echo "📝 Log file has $LOG_SIZE lines (no recent activity)"
+        fi
+    else
+        echo "📝 Log file not found: $LOG_FILE"
+    fi
+}
+
+# Function to show full recent logs for detailed diagnostics
+show_recent_logs_full() {
     if [ -f "$LOG_FILE" ]; then
         echo "📝 Recent logs from $LOG_FILE:"
-        tail -10 "$LOG_FILE" 2>/dev/null | sed 's/^/  /' || echo "  Could not read log file"
+        tail -15 "$LOG_FILE" 2>/dev/null | sed 's/^/  /' || echo "  Could not read log file"
     else
         echo "📝 Log file not found: $LOG_FILE"
     fi
@@ -54,11 +71,21 @@ check_process_status() {
 show_port_status() {
     echo "📊 Port 30080 status:"
     if command -v netstat >/dev/null; then
-        netstat -tlnp 2>/dev/null | grep ":30080" || echo "  No process listening on port 30080"
+        PORT_INFO=$(netstat -tlnp 2>/dev/null | grep ":30080" || echo "")
+        if [ -n "$PORT_INFO" ]; then
+            echo "  ✅ $PORT_INFO"
+        else
+            echo "  ❌ No process listening on port 30080"
+        fi
     elif command -v ss >/dev/null; then
-        ss -tlnp 2>/dev/null | grep ":30080" || echo "  No process listening on port 30080"
+        PORT_INFO=$(ss -tlnp 2>/dev/null | grep ":30080" || echo "")
+        if [ -n "$PORT_INFO" ]; then
+            echo "  ✅ $PORT_INFO"
+        else
+            echo "  ❌ No process listening on port 30080"
+        fi
     else
-        echo "  netstat/ss not available"
+        echo "  ⚠️  netstat/ss not available"
     fi
 }
 
@@ -66,37 +93,47 @@ show_port_status() {
 show_gpu_status() {
     echo "🖥️  GPU status:"
     if command -v nvidia-smi >/dev/null; then
-        nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total --format=csv,noheader 2>/dev/null | head -4 | sed 's/^/  /' || echo "  Could not get GPU status"
+        GPU_STATUS=$(nvidia-smi --query-gpu=index,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null || echo "")
+        if [ -n "$GPU_STATUS" ]; then
+            echo "$GPU_STATUS" | head -4 | while read line; do
+                echo "  GPU $line"
+            done
+        else
+            echo "  ⚠️  Could not get GPU status"
+        fi
     else
-        echo "  nvidia-smi not available"
+        echo "  ⚠️  nvidia-smi not available"
     fi
 }
 
 # Function to analyze log for errors
 analyze_log_errors() {
     if [ -f "$LOG_FILE" ]; then
-        echo "🔍 Analyzing log for errors..."
+        echo "🔍 Log analysis:"
+        
+        # Count errors and warnings
+        ERRORS=$(grep -c "Error\|Exception\|Failed\|ModuleNotFoundError\|ImportError" "$LOG_FILE" 2>/dev/null || echo "0")
+        WARNINGS=$(grep -c "Warning\|WARN" "$LOG_FILE" 2>/dev/null || echo "0")
+        
+        echo "  📊 Error count: $ERRORS, Warning count: $WARNINGS"
         
         # Check for common error patterns
-        if grep -q "ModuleNotFoundError\|ImportError" "$LOG_FILE" 2>/dev/null; then
-            echo "  ❌ Found dependency errors:"
-            grep -n "ModuleNotFoundError\|ImportError" "$LOG_FILE" | tail -3 | sed 's/^/    /'
-        fi
-        
-        if grep -q "CUDA\|GPU" "$LOG_FILE" 2>/dev/null; then
-            echo "  🖥️  Found GPU-related messages:"
-            grep -n "CUDA\|GPU" "$LOG_FILE" | tail -3 | sed 's/^/    /'
-        fi
-        
-        if grep -q "Error\|Exception\|Failed" "$LOG_FILE" 2>/dev/null; then
-            echo "  ⚠️  Found error messages:"
-            grep -n "Error\|Exception\|Failed" "$LOG_FILE" | tail -3 | sed 's/^/    /'
+        if [ "$ERRORS" -gt 0 ]; then
+            echo "  ❌ Recent errors:"
+            grep -n "Error\|Exception\|Failed\|ModuleNotFoundError\|ImportError" "$LOG_FILE" 2>/dev/null | tail -2 | sed 's/^/    /'
         fi
         
         # Check for successful startup indicators
-        if grep -q "Uvicorn running\|server started\|listening\|ready" "$LOG_FILE" 2>/dev/null; then
+        if grep -q "Uvicorn running\|server started\|listening\|ready\|started successfully" "$LOG_FILE" 2>/dev/null; then
             echo "  ✅ Found positive startup indicators:"
-            grep -n "Uvicorn running\|server started\|listening\|ready" "$LOG_FILE" | tail -2 | sed 's/^/    /'
+            grep -n "Uvicorn running\|server started\|listening\|ready\|started successfully" "$LOG_FILE" 2>/dev/null | tail -2 | sed 's/^/    /'
+        fi
+        
+        # Check for GPU initialization
+        if grep -q "CUDA\|GPU" "$LOG_FILE" 2>/dev/null; then
+            echo "  🖥️  GPU activity detected"
+            GPU_LINES=$(grep -c "CUDA\|GPU" "$LOG_FILE" 2>/dev/null || echo "0")
+            echo "    GPU-related log lines: $GPU_LINES"
         fi
     fi
 }
@@ -104,10 +141,15 @@ analyze_log_errors() {
 # Main wait loop
 consecutive_failures=0
 max_consecutive_failures=6  # 30 seconds of consecutive failures
+check_count=0
 
 while true; do
     CURRENT_TIME=$(date +%s)
     ELAPSED_TIME=$((CURRENT_TIME - START_TIME))
+    check_count=$((check_count + 1))
+    
+    echo ""
+    echo "⏳ Check #$check_count - Service readiness... (elapsed: ${ELAPSED_TIME}s)"
     
     # Check timeout
     if [ $ELAPSED_TIME -gt $TIMEOUT ]; then
@@ -120,11 +162,12 @@ while true; do
         echo ""
         analyze_log_errors
         echo ""
-        show_recent_logs
+        show_recent_logs_full
         exit 1
     fi
     
-    echo "⏳ Checking service readiness... (elapsed: ${ELAPSED_TIME}s)"
+    # Always show brief logs on every check
+    show_recent_logs_brief
     
     # Check if process is still running
     if ! check_process_status; then
@@ -140,11 +183,18 @@ while true; do
             echo ""
             analyze_log_errors
             echo ""
-            show_recent_logs
+            show_recent_logs_full
             exit 1
         fi
     else
         consecutive_failures=0
+    fi
+    
+    # Show detailed diagnostics every 3 checks (15 seconds) instead of 30
+    if [ $((check_count % 3)) -eq 0 ]; then
+        echo "🔍 Detailed status:"
+        show_port_status
+        analyze_log_errors
     fi
     
     # Test /v1/models endpoint
@@ -173,27 +223,6 @@ while true; do
         echo "❌ Service endpoint not responding yet..."
     fi
     
-    # Show diagnostic info every 30 seconds
-    if [ $((ELAPSED_TIME % 30)) -eq 0 ] && [ $ELAPSED_TIME -gt 0 ]; then
-        echo ""
-        echo "🔍 Diagnostic info at ${ELAPSED_TIME}s:"
-        show_port_status
-        
-        # Show log file growth
-        if [ -f "$LOG_FILE" ]; then
-            LOG_SIZE=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0")
-            echo "📊 Log file has $LOG_SIZE lines"
-            
-            # Show recent non-empty lines
-            RECENT_LOGS=$(tail -3 "$LOG_FILE" 2>/dev/null | grep -v "^$" | head -2)
-            if [ -n "$RECENT_LOGS" ]; then
-                echo "📝 Recent log activity:"
-                echo "$RECENT_LOGS" | sed 's/^/  /'
-            fi
-        fi
-        echo ""
-    fi
-    
-    echo "😴 Service not ready yet... waiting ${POLL_INTERVAL} seconds (elapsed: ${ELAPSED_TIME}s)"
+    echo "😴 Waiting ${POLL_INTERVAL} seconds..."
     sleep $POLL_INTERVAL
 done 

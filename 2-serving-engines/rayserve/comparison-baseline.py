@@ -1,5 +1,5 @@
-import os
 import sys
+import os
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
 
@@ -13,8 +13,6 @@ accelerator_type = sys.argv[1]
 
 os.environ["VLLM_USE_V1"] = "1"
 
-
-# --- Define the config ---
 llm_config = LLMConfig(
     model_loading_config=dict(
         model_id="Qwen/Qwen3-32B",
@@ -22,20 +20,19 @@ llm_config = LLMConfig(
     ),
     deployment_config=dict(
         autoscaling_config=dict(
-            min_replicas=4,
-            max_replicas=4,
+            min_replicas=4, max_replicas=4,
+            ray_actor_options={"num_gpus": 1},
         )
     ),
     accelerator_type=accelerator_type,
     engine_kwargs=dict(
-        tensor_parallel_size=2,
+        enable_prefix_caching=True,
         max_model_len=26000,
-    )
+        tensor_parallel_size=2,
+    ),
 )
 
-
-
-# --- Start the server ---
+# Start the server on port 30080
 serve.start(http_options={"port": 30080})
 app = build_openai_app({"llm_configs": [llm_config]})
-serve.run(app, blocking=True)
+serve.run(app, blocking=True) 

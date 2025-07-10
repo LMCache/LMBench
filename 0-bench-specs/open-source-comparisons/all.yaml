@@ -1,4 +1,4 @@
-Name: OSS-Comp-4-Qwen32B-TP2-H100
+Name: Open-Source-Comparison
 
 # Suggested Infrastructure (in run-bench.yaml)
 # 1-infrastructure:
@@ -7,33 +7,34 @@ Name: OSS-Comp-4-Qwen32B-TP2-H100
 #   All deployments below use 4x Qwen-32B with tensor parallelism 2
 
 Serving:
-  - Helm-ProductionStack:
-      helmConfigSelection: open-source/comparison-baseline.yaml
-      hf_token: <YOUR_HF_TOKEN>
-      modelURL: Qwen/Qwen3-32B
-#   - SGLang:
-#       scriptName: comparison-baseline.sh
-#       modelURL: Qwen/Qwen3-32B
-  - LLM-D:
-      configSelection: comparison-baseline.yaml
-      modelURL: Qwen/Qwen3-32B
+  # - Helm-ProductionStack:
+  #     helmConfigSelection: open-source/comparison-baseline.yaml
+  #     hf_token: <YOUR_HF_TOKEN>
+  #     modelURL: Qwen/Qwen3-32B
+  # - SGLang:
+  #     scriptName: comparison-baseline.sh
+  #     modelURL: Qwen/Qwen3-32B
   - RayServe:
-      scriptName: comparison-baseline.sh
+      scriptName: comparison-baseline.py
       acceleratorType: H100
-      modelURL: Qwen/Qwen3-32B
-  - Dynamo:
-      configSelection: comparison-baseline.yaml
-      modelURL: Qwen/Qwen3-32B
+      modelURL: Qwen/Qwen3-14B
+  # - LLM-D:
+  #     configSelection: comparison-baseline.yaml
+  #     modelURL: Qwen/Qwen3-32B
+  #     hf_token: <YOUR_HF_TOKEN>
+  # - Dynamo:
+  #     configSelection: comparison-baseline.yaml
+  #     modelURL: Qwen/Qwen3-14B
 
 Workload:
 
   LMCacheSynthetic:
     # long input short output:
     - NUM_USERS_WARMUP: 30
-      NUM_USERS: 30
-      NUM_ROUNDS: 30
+      NUM_USERS: 60
+      NUM_ROUNDS: 60
       SYSTEM_PROMPT: 1000
       CHAT_HISTORY: 20000
       ANSWER_LEN: 200
-      QPS: [0.1]
+      QPS: [4]
       USE_SHAREGPT: false

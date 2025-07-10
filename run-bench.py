@@ -159,10 +159,13 @@ def validate_single_spec_config(config: Dict[str, Any], file_path: str) -> Dict[
         elif baseline_type == 'LLM-D':
             config_selection = baseline_config.get('configSelection')
             model_url = baseline_config.get('modelURL')
+            hf_token = baseline_config.get('hf_token')
             if not config_selection:
                 raise ValueError(f"configSelection must be specified for LLM-D baseline {i} in {file_path}")
             if not model_url:
                 raise ValueError(f"modelURL must be specified for LLM-D baseline {i} in {file_path}")
+            if not hf_token:
+                raise ValueError(f"hf_token must be specified for LLM-D baseline {i} in {file_path}")
         elif baseline_type == 'Dynamo':
             config_selection = baseline_config.get('configSelection')
             model_url = baseline_config.get('modelURL')
@@ -307,7 +310,8 @@ def generate_baseline_key(serving_config: Dict[str, Any]) -> str:
         return f"sglang_{script_name.replace('.sh', '').replace('-', '_')}"
     elif baseline_type == 'RayServe':
         script_name = baseline_config.get('scriptName', '')
-        return f"rayserve_{script_name.replace('.sh', '').replace('-', '_')}"
+        accelerator_type = baseline_config.get('acceleratorType', '')
+        return f"rayserve_{script_name.replace('.py', '').replace('-', '_')}_{accelerator_type.lower()}"
     elif baseline_type == 'Helm-ProductionStack':
         # helm_{config_name} based on helmConfigSelection
         helm_config = baseline_config.get('helmConfigSelection', '')
@@ -383,10 +387,13 @@ def setup_single_baseline(serving_config: Dict[str, Any], global_config: Dict[st
 
     elif baseline_type == 'LLM-D':
         model_url = baseline_config.get('modelURL')
+        hf_token = baseline_config.get('hf_token')
         if not model_url:
             raise ValueError(f"modelURL must be specified for LLM-D baseline {serving_index}")
+        if not hf_token:
+            raise ValueError(f"hf_token must be specified for LLM-D baseline {serving_index}")
         MODEL_URL = model_url
-        # HF_TOKEN is read directly from environment variable by the script
+        HF_TOKEN = hf_token
         llmd_installation(baseline_config)
 
     elif baseline_type == 'Dynamo':
@@ -398,6 +405,9 @@ def setup_single_baseline(serving_config: Dict[str, Any], global_config: Dict[st
             raise ValueError(f"modelURL must be specified for Dynamo baseline {serving_index}")
         MODEL_URL = model_url
         # HF_TOKEN is read directly from environment variable by the script
+        HF_TOKEN = os.environ.get('HF_TOKEN')
+        if not HF_TOKEN:
+            raise ValueError("HF_TOKEN environment variable is not set")
         dynamo_installation(baseline_config)
 
     else:
@@ -469,9 +479,11 @@ def llmd_installation(llmd_config: Dict[str, Any]) -> None:
     if not config_selection:
         raise ValueError("configSelection must be specified for LLM-D")
     
-    # Script reads HF_TOKEN directly from environment variable
-    if not os.environ.get('HF_TOKEN'):
-        raise ValueError("HF_TOKEN environment variable is not set")
+    # Ensure HF_TOKEN environment variable is set for the script
+    global HF_TOKEN
+    if not HF_TOKEN:
+        raise ValueError("HF_TOKEN is not set when trying to deploy LLM-D baseline")
+    os.environ['HF_TOKEN'] = HF_TOKEN
 
     # Run the LLM-D choose-and-deploy script with config selection
     # NOTE: choose-and-deploy.sh already calls setup.sh internally, so no need to call setup.sh separately

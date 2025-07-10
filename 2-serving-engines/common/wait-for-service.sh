@@ -26,8 +26,31 @@ check_service_ready() {
     # Try to curl the models endpoint
     if models_response=$(curl -s -m 10 "$BASE_URL/v1/models" 2>/dev/null); then
         if echo "$models_response" | grep -q "object.*list" || echo "$models_response" | grep -q "data"; then
-            echo "✅ Models endpoint returned valid response"
-            return 0
+            # Check if models are actually loaded (not just empty list)
+            if echo "$models_response" | grep -q '"data":\[\]' || echo "$models_response" | grep -q '"data": \[\]'; then
+                echo "❌ Models endpoint returned empty model list - service not ready"
+                return 1
+            else
+                echo "✅ Models endpoint returned valid response with models loaded"
+                
+                # For Dynamo, also check if VllmWorker is actually initialized
+                if [ "$BASELINE_NAME" = "Dynamo" ]; then
+                    if [ -f "$SCRIPT_DIR/dynamo_serve.log" ]; then
+                        if grep -q "VllmWorker has been initialized" "$SCRIPT_DIR/dynamo_serve.log" 2>/dev/null; then
+                            echo "✅ Dynamo VllmWorker is fully initialized and ready for inference"
+                            return 0
+                        else
+                            echo "❌ Dynamo VllmWorker still initializing (model loading/CUDA graph capture in progress)"
+                            return 1
+                        fi
+                    else
+                        echo "❌ Dynamo log file not found - waiting for initialization"
+                        return 1
+                    fi
+                else
+                    return 0
+                fi
+            fi
         else
             echo "⚠️  Models endpoint returned unexpected response: $models_response"
         fi

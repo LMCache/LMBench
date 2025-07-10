@@ -109,8 +109,59 @@ bash llmd-installer.sh --minikube --values-file "examples/$CONFIG_FILE"
 # Return to script directory
 cd "$SCRIPT_DIR"
 
-# Step 3: Wait for service readiness using common wait script
-echo "Step 3: Waiting for service readiness..."
+# Step 3: Set up port forwarding before waiting for service readiness
+echo "Step 3: Setting up port forwarding..."
+
+# Clean up any existing port forwarding on port 30080
+echo "Cleaning up any existing port forwarding on port 30080..."
+pkill -f "kubectl port-forward.*30080" || true
+
+# Wait for cleanup to complete
+sleep 2
+
+# Start port forwarding with proper error handling
+echo "Starting port forwarding: llm-d-inference-gateway-istio:80 -> localhost:30080"
+kubectl port-forward -n llm-d svc/llm-d-inference-gateway-istio 30080:80 > /tmp/llm-d-port-forward.log 2>&1 &
+PORT_FORWARD_PID=$!
+
+# Verify port forwarding started successfully
+sleep 5
+if ! kill -0 $PORT_FORWARD_PID 2>/dev/null; then
+    echo "ERROR: Port forwarding failed to start. Check logs:"
+    cat /tmp/llm-d-port-forward.log
+    exit 1
+fi
+
+# Test that port forwarding is working
+echo "Verifying port forwarding is working..."
+RETRY_COUNT=0
+MAX_RETRIES=6
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if curl -s -m 5 localhost:30080 > /dev/null 2>&1; then
+        echo "Port forwarding is working!"
+        break
+    else
+        echo "Port forwarding not ready yet, waiting... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
+        sleep 5
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+    fi
+done
+
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    echo "ERROR: Port forwarding failed to become accessible after $MAX_RETRIES attempts"
+    echo "Port forwarding process status:"
+    if kill -0 $PORT_FORWARD_PID 2>/dev/null; then
+        echo "  Port forwarding process is still running (PID: $PORT_FORWARD_PID)"
+    else
+        echo "  Port forwarding process has died"
+    fi
+    echo "Port forwarding logs:"
+    cat /tmp/llm-d-port-forward.log
+    exit 1
+fi
+
+# Step 4: Wait for service readiness using common wait script
+echo "Step 4: Waiting for service readiness..."
 COMMON_WAIT_SCRIPT="$SCRIPT_DIR/../common/wait-for-service.sh"
 if [ -f "$COMMON_WAIT_SCRIPT" ]; then
     chmod +x "$COMMON_WAIT_SCRIPT"
@@ -121,6 +172,6 @@ else
     bash wait.sh
 fi
 
-nohup kubectl port-forward -n llm-d svc/llm-d-inference-gateway-istio 30080:80 &
-
 echo "=== LLM-D Deployment Complete ==="
+echo "Port forwarding is running in background (PID: $PORT_FORWARD_PID)"
+echo "Service is accessible at: http://localhost:30080"

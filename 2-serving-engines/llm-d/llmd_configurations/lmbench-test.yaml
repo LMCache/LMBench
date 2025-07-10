@@ -1,0 +1,59 @@
+# LMBench-optimized LLM-D configuration
+# Minimal resource requirements for testing
+sampleApplication:
+  baseConfigMapRefName: basic-gpu-preset
+  model:
+    modelArtifactURI: hf://meta-llama/Llama-3.1-8B-Instruct
+    modelName: "meta-llama/Llama-3.1-8B-Instruct"
+    auth:
+      hfToken:
+        name: "hf-token-secret"
+        key: "token"
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+    requests:
+      cpu: "4"
+      memory: 16Gi
+      nvidia.com/gpu: 1
+  prefill:
+    replicas: 1
+    extraArgs:
+      - "--gpu-memory-utilization"
+      - "0.8"
+      - "--max-model-len"
+      - "8000"
+  decode:
+    replicas: 1
+    extraArgs:
+      - "--gpu-memory-utilization"
+      - "0.8"
+      - "--max-model-len"
+      - "8000"
+
+redis:
+  enabled: false  # Disable Redis for simplicity
+
+modelservice:
+  epp:
+    defaultEnvVarsOverride:
+      - name: ENABLE_KVCACHE_AWARE_SCORER
+        value: "false"
+      - name: ENABLE_PREFIX_AWARE_SCORER
+        value: "false"
+      - name: ENABLE_LOAD_AWARE_SCORER
+        value: "false"
+      - name: ENABLE_SESSION_AWARE_SCORER
+        value: "false"
+      - name: PD_ENABLED
+        value: "false"
+      - name: PD_PROMPT_LEN_THRESHOLD
+        value: "10"
+      - name: PREFILL_ENABLE_KVCACHE_AWARE_SCORER
+        value: "false"
+      - name: PREFILL_ENABLE_LOAD_AWARE_SCORER
+        value: "false"
+      - name: PREFILL_ENABLE_PREFIX_AWARE_SCORER
+        value: "false"
+      - name: PREFILL_ENABLE_SESSION_AWARE_SCORER
+        value: "false" 

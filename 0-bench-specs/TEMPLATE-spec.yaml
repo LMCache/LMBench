@@ -42,12 +42,12 @@ Serving:
 
   # Option 4: RayServe (Local-Flat infrastructure ONLY)
   - RayServe:
-      scriptName: comparison-baseline.sh  # Script in 2-serving-engines/rayserve/
+      scriptName: comparison-baseline.py  # Python script in 2-serving-engines/rayserve/
       acceleratorType: H100  # e.g., H100, A100, V100, T4
       modelURL: meta-llama/Llama-3.1-70B-Instruct
       # NOTE: RayServe requires Local-Flat infrastructure.
       # The script reads HF_TOKEN directly from environment variable.
-      # Example: ./comparison-baseline.sh H100
+      # Example: ./choose-and-deploy.sh comparison-baseline.py H100
 
   # Option 5: Dynamo (Local-Flat infrastructure ONLY)
   - Dynamo:
@@ -60,8 +60,9 @@ Serving:
   # Option 6: LLM-D (LocalMinikube infrastructure ONLY)
   - LLM-D:
       # Configuration file from 2-serving-engines/llm-d/llmd_configurations/
-      configSelection: debug-baseline.yaml
+      configSelection: debug-deployment.yaml
       modelURL: meta-llama/Llama-3.1-8B-Instruct
+      hf_token: <YOUR_HF_TOKEN>
       # NOTE: LLM-D requires LocalMinikube infrastructure.
       # The script reads HF_TOKEN directly from environment variable.
 

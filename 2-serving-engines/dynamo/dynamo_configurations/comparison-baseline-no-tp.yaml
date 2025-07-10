@@ -13,16 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Modified comparison-baseline with tensor parallelism disabled due to ai_dynamo_vllm incompatibility
+# Uses 8 workers with 1 GPU each instead of 4 workers with 2 GPUs each (tensor_parallel_size=2)
+
 Common:
-  model: Qwen/Qwen3-14B
+  model: Qwen/Qwen3-32B
   router: kv
   block-size: 64
-  max-model-len: 26000
+  max-model-len: 16384  # Reduced from 26000 to avoid memory issues without TP
   kv-transfer-config: '{"kv_connector":"DynamoNixlConnector"}'
 
-
 Frontend:
-  served_model_name: Qwen/Qwen3-14B
+  served_model_name: Qwen/Qwen3-32B
   endpoint: dynamo.Processor.chat/completions
   port: 30080
 
@@ -35,24 +37,19 @@ Router:
 
 VllmWorker:
   enforce-eager: true
-  max-num-batched-tokens: 26000
+  max-num-batched-tokens: 16384  # Reduced to match max-model-len
   enable-prefix-caching: true
-  tensor-parallel-size: 1
+  # tensor-parallel-size: 1  # Disabled - causes segfaults in ai_dynamo_vllm
   # Aggregated settings - no remote prefill
   remote-prefill: false
   ServiceArgs:
-    workers: 4
+    workers: 8  # Increased from 4 to maintain total GPU usage
     resources:
-      gpu: '2' # per worker
+      gpu: '1' # Single GPU per worker instead of 2
   common-configs: [model, block-size, max-model-len, router]
 
 # No PrefillWorker section - this is aggregated architecture
 
 Planner:
   environment: local
-  no-operation: true
-
-
-
-
-
+  no-operation: true 

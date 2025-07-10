@@ -195,7 +195,14 @@ resolve_values() {
 setup_env() {
   log_info "📂 Setting up script environment..."
   SCRIPT_DIR=$(realpath "$(pwd)")
-  REPO_ROOT=$(git rev-parse --show-toplevel)
+  # Check if we're in a nested LMBench repository structure
+  if [[ "$(pwd)" == *"/2-serving-engines/llm-d/llm-d-deployer/quickstart" ]]; then
+    # We're in LMBench structure, use the llm-d-deployer as root
+    REPO_ROOT=$(realpath "$(pwd)/..")
+  else
+    # Standalone llm-d-deployer repository
+    REPO_ROOT=$(git rev-parse --show-toplevel)
+  fi
   INSTALL_DIR=$(realpath "${REPO_ROOT}/quickstart")
   CHART_DIR=$(realpath "${REPO_ROOT}/charts/llm-d")
 
