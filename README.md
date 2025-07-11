@@ -5,7 +5,7 @@
 
 ## Overview
 
-LMBench is a benchmarking framework for [LMCache](https://github.com/LMCache/LMCache) and [vLLM Production Stack](https://github.com/vllm-project/production-stack) with external baseline comparison support (SGLang, Dynamo, etc.).
+LMBench is a benchmarking framework for [LMCache](https://github.com/LMCache/LMCache) and [vLLM Production Stack](https://github.com/vllm-project/production-stack) with external baseline comparison support (SGLang, Dynamo, RayServe, LLM-D etc.).
 
 **Core Architecture**: Cartesian product evaluation of serving baselines × workload generators across configurable infrastructure.
 
@@ -28,9 +28,11 @@ LMBench/
 │   └── local-flat/         # Direct script execution
 ├── 2-serving-engines/       # Baseline deployments
 │   ├── helm-production-stack/    # vLLM Production Stack (Helm)
-│   ├── direct-production-stack/  # vLLM Production Stack (Direct K8s)
+│   ├── direct-production-stack/  # vLLM Production Stack (Direct K8s Manifests)
 │   ├── sglang/             # SGLang baseline
-│   ├── dynamo/             # Meta Dynamo baseline  
+│   ├── dynamo/             # Dynamo baseline
+│   ├── rayserve/           # RayServe baseline  
+│   ├── llm-d/              # LLM-D baseline  
 │   └── ADDING_NEW_BASELINES.md
 ├── 3-workloads/            # Traffic generators
 │   ├── synthetic/          # Configurable multi-round QA

@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any, cast
 
 import openai
 import pandas as pd
@@ -129,7 +129,7 @@ curl http://localhost:30080/v1/chat/completions \
 
 class RequestExecutor:
 
-    def __init__(self, base_url: str, model: str):
+    def __init__(self, base_url: str, model: str, api_type: str = "completions"):
         # For vLLM server, we don't need an API key, but the client requires one
         # Ensure base_url ends with /v1 for vLLM
         if not base_url.endswith('/v1'):
@@ -139,7 +139,8 @@ class RequestExecutor:
             base_url=base_url
         )
         self.model = model
-        logging.info(f"Initialized OpenAI client with base_url={base_url} and model={model}")
+        self.api_type = api_type  # "completions" or "chat"
+        logging.info(f"Initialized OpenAI client with base_url={base_url}, model={model}, api_type={api_type}")
         self.loop = AsyncLoopWrapper.GetOrStartLoop()
         self.request_history = []
 
@@ -155,63 +156,114 @@ class RequestExecutor:
             start_time = time.time()
             first_token_time = None
 
-            # Convert chat messages to a single prompt string
-            prompt = ""
-            for msg in messages:
-                role = msg["role"]
-                content = msg["content"]
-                if role == "system":
-                    prompt += f"System: {content}\n"
-                elif role == "user":
-                    prompt += f"User: {content}\n"
-                elif role == "assistant":
-                    prompt += f"Assistant: {content}\n"
-            prompt += "Assistant: "
+            if self.api_type == "chat":
+                # Use chat completions API directly with messages
+                # Cast to proper message format for OpenAI client
+                chat_messages = cast(List[Any], messages)
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=chat_messages,
+                    stream=True,
+                    max_tokens=max_tokens,
+                    temperature=0.0,
+                    stream_options={"include_usage": True},
+                    extra_headers=extra_headers,
+                )
 
-            # Make the request
-            response = await self.client.completions.create(
-                prompt=prompt,
-                model=self.model,
-                stream=True,
-                max_tokens=max_tokens,
-                temperature=0.0,
-                stream_options={"include_usage": True},
-                extra_headers=extra_headers,
-            )
+                # Process the streaming response for chat completions
+                last_chunk = None
+                async for chunk in response:
+                    last_chunk = chunk
+                    if not chunk.choices:
+                        continue
 
-            # Process the streaming response
-            async for chunk in response:
-                if not chunk.choices:
-                    continue
+                    # Handle content for chat completions
+                    if chunk.choices[0].delta and chunk.choices[0].delta.content is not None:
+                        if first_token_time is None and chunk.choices[0].delta.content != "":
+                            first_token_time = time.time()
+                        words += chunk.choices[0].delta.content
 
-                # Handle content
-                if chunk.choices[0].text is not None:
-                    if first_token_time is None and chunk.choices[0].text != "":
-                        first_token_time = time.time()
-                    words += chunk.choices[0].text
+                # Handle token counts if available
+                if last_chunk and hasattr(last_chunk, 'usage') and last_chunk.usage is not None:
+                    tokens_out = last_chunk.usage.completion_tokens
+                    tokens_prefill = last_chunk.usage.prompt_tokens
 
-            # Handle token counts if available
-            if hasattr(chunk, 'usage') and chunk.usage is not None:
-                tokens_out = chunk.usage.completion_tokens
-                tokens_prefill = chunk.usage.prompt_tokens
+                # If we didn't get token counts from streaming, try to get them from the final response
+                if tokens_out == 0 or tokens_prefill == 0:
+                    print("No token counts from streaming, getting final response")
+                    print(f"{tokens_out}, {tokens_prefill}")
+                    try:
+                        final_response = await self.client.chat.completions.create(
+                            model=self.model,
+                            messages=chat_messages,
+                            stream=False,
+                        )
+                        if hasattr(final_response, 'usage') and final_response.usage is not None:
+                            tokens_out = final_response.usage.completion_tokens
+                            tokens_prefill = final_response.usage.prompt_tokens
+                    except Exception as e:
+                        logging.warning(f"Failed to get token counts from final response: {e}")
 
-            # If we didn't get token counts from streaming, try to get them from the final response
-            if tokens_out == 0 or tokens_prefill == 0:
-                print("No token counts from streaming, getting final response")
-                print(f"{tokens_out}, {tokens_prefill}")
-                try:
-                    final_response = await self.client.completions.create(
-                        prompt=prompt,
-                        model=self.model,
-                        stream=False,
-                    )
-                    if hasattr(final_response, 'usage') and final_response.usage is not None:
-                        tokens_out = final_response.usage.completion_tokens
-                        tokens_prefill = final_response.usage.prompt_tokens
-                except Exception as e:
-                    logging.warning(f"Failed to get token counts from final response: {e}")
+            else:  # self.api_type == "completions"
+                # Convert chat messages to a single prompt string
+                prompt = ""
+                for msg in messages:
+                    role = msg["role"]
+                    content = msg["content"]
+                    if role == "system":
+                        prompt += f"System: {content}\n"
+                    elif role == "user":
+                        prompt += f"User: {content}\n"
+                    elif role == "assistant":
+                        prompt += f"Assistant: {content}\n"
+                prompt += "Assistant: "
 
-            # # Calculate timing metrics
+                # Make the request using completions API
+                response = await self.client.completions.create(
+                    prompt=prompt,
+                    model=self.model,
+                    stream=True,
+                    max_tokens=max_tokens,
+                    temperature=0.0,
+                    stream_options={"include_usage": True},
+                    extra_headers=extra_headers,
+                )
+
+                # Process the streaming response for completions
+                last_chunk = None
+                async for chunk in response:
+                    last_chunk = chunk
+                    if not chunk.choices:
+                        continue
+
+                    # Handle content for completions
+                    if chunk.choices[0].text is not None:
+                        if first_token_time is None and chunk.choices[0].text != "":
+                            first_token_time = time.time()
+                        words += chunk.choices[0].text
+
+                # Handle token counts if available
+                if last_chunk and hasattr(last_chunk, 'usage') and last_chunk.usage is not None:
+                    tokens_out = last_chunk.usage.completion_tokens
+                    tokens_prefill = last_chunk.usage.prompt_tokens
+
+                # If we didn't get token counts from streaming, try to get them from the final response
+                if tokens_out == 0 or tokens_prefill == 0:
+                    print("No token counts from streaming, getting final response")
+                    print(f"{tokens_out}, {tokens_prefill}")
+                    try:
+                        final_response = await self.client.completions.create(
+                            prompt=prompt,
+                            model=self.model,
+                            stream=False,
+                        )
+                        if hasattr(final_response, 'usage') and final_response.usage is not None:
+                            tokens_out = final_response.usage.completion_tokens
+                            tokens_prefill = final_response.usage.prompt_tokens
+                    except Exception as e:
+                        logging.warning(f"Failed to get token counts from final response: {e}")
+
+            # Calculate timing metrics
             ttft = first_token_time - start_time if first_token_time else 0
             generation_time = time.time() - first_token_time if first_token_time else 0
 
@@ -718,6 +770,13 @@ def parse_arguments() -> WorkloadConfig:
     parser.add_argument(
         "--sharegpt", action="store_true", help="Whether to use ShareGPT dataset"
     )
+    parser.add_argument(
+        "--api-type",
+        type=str,
+        default="completions",
+        choices=["completions", "chat"],
+        help="API type to use: completions or chat (default: completions)",
+    )
     args = parser.parse_args()
     return args
 
@@ -751,7 +810,7 @@ def main():
     step_interval = 0.1
 
     executor = RequestExecutor(
-        base_url=args.base_url, model=args.model
+        base_url=args.base_url, model=args.model, api_type=args.api_type
     )
 
     warmup_engine(executor)

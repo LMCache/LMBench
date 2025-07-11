@@ -76,10 +76,14 @@ class YourWorkloadBenchmark:
         self.base_url = args.base_url  # localhost:30080
         self.qps = args.qps
         self.output_file = args.output
+        self.api_type = args.api_type  # "completions" or "chat"
     
     async def run_benchmark(self):
         results = []
         # Implement QPS-controlled requests to self.base_url
+        # Use self.api_type to determine API endpoint:
+        # - "completions": POST /v1/completions with prompt string
+        # - "chat": POST /v1/chat/completions with messages array
         # Record: timestamp, request_id, latency, prompt_tokens, completion_tokens, total_tokens, error
         self.save_results(results)
     
@@ -98,10 +102,36 @@ if __name__ == "__main__":
     parser.add_argument('--base-url', required=True)
     parser.add_argument('--qps', type=float, required=True)
     parser.add_argument('--output', required=True)
+    parser.add_argument('--api-type', choices=['completions', 'chat'], 
+                       default='completions', help='API type to use')
     
     args = parser.parse_args()
     benchmark = YourWorkloadBenchmark(args)
     asyncio.run(benchmark.run_benchmark())
+```
+
+## API Type Support (Only for multi-round-qa i.e. Synthetic right now)
+
+**API Differences**:
+```python
+# Completions API (default)
+POST /v1/completions
+{
+  "model": "model-name",
+  "prompt": "System: You are helpful.\nUser: Hello\nAssistant: ",
+  "max_tokens": 50
+}
+
+# Chat Completions API  
+POST /v1/chat/completions
+{
+  "model": "model-name", 
+  "messages": [
+    {"role": "system", "content": "You are helpful."},
+    {"role": "user", "content": "Hello"}
+  ],
+  "max_tokens": 50
+}
 ```
 
 ## 3. Integration with Dispatch System

@@ -1,5 +1,6 @@
 #!/bin/bash
-set -e
+# Note: Not using 'set -e' to avoid terminating the script if individual cleanup commands fail
+# We want to continue cleaning up even if some processes can't be killed
 
 echo "=== Comprehensive Baseline Cleanup ==="
 echo "This script will clean up ALL baselines to ensure a clean deployment environment."
@@ -58,39 +59,108 @@ echo "1. Clearing GPU processes..."
 if command -v nvidia-smi &> /dev/null; then
     echo "Killing GPU processes..."
     
-    # Method 1: Use nvidia-smi to get compute processes
-    GPU_PIDS=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
-    
-    # Method 2: Also check pmon output for additional processes
-    PMON_PIDS=$(nvidia-smi pmon -c 1 2>/dev/null | awk 'NR>2 && $2!="[Unknown]" {print $2}' | grep -v '^-$' || true)
-    
-    # Combine and deduplicate PIDs
-    ALL_PIDS=$(echo -e "$GPU_PIDS\n$PMON_PIDS" | sort -u | grep -E '^[0-9]+$' || true)
-    
-    if [ -n "$ALL_PIDS" ]; then
-        for pid in $ALL_PIDS; do
-            if [ -n "$pid" ] && [ "$pid" -gt 0 ] 2>/dev/null; then
-                echo "Killing GPU process PID: $pid"
-                # Try regular kill first, then sudo if needed
-                if ! kill -9 "$pid" 2>/dev/null; then
-                    sudo kill -9 "$pid" 2>/dev/null || echo "  Failed to kill PID $pid"
-                fi
-            fi
-        done
-        
-        # Wait for processes to die and verify
-        sleep 3
-        
-        # Verify GPU is actually free
-        REMAINING_PROCESSES=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
-        if [ -n "$REMAINING_PROCESSES" ]; then
-            echo "Warning: Some GPU processes may still be running:"
-            nvidia-smi --query-compute-apps=pid,process_name --format=csv,noheader || true
-        else
-            echo "GPU processes cleared successfully."
-        fi
+    # Check if GPUs are available and accessible
+    if ! nvidia-smi &>/dev/null; then
+        echo "Warning: nvidia-smi command failed, GPUs may not be accessible"
+        echo "nvidia-smi not accessible, skipping GPU cleanup"
     else
-        echo "No GPU processes found to kill."
+        # Method 1: Use nvidia-smi to get compute processes
+        GPU_PIDS=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
+        
+        # Method 2: Also check pmon output for additional processes
+        PMON_PIDS=$(nvidia-smi pmon -c 1 2>/dev/null | awk 'NR>2 && $2!="[Unknown]" && $2!="-" {print $2}' | grep -E '^[0-9]+$' || true)
+        
+        # Method 3: Check for processes using GPU libraries and CUDA
+        CUDA_PIDS=$(lsof 2>/dev/null | grep -E '(libcuda|libnvidia|/dev/nvidia)' | awk '{print $2}' | sort -u | grep -E '^[0-9]+$' || true)
+        
+        # Method 4: Find processes with "gpu", "cuda", "nvidia" in command line (excluding current shell and parents)
+        CURRENT_PID=$$
+        PARENT_PID=$(ps -o ppid= -p $CURRENT_PID 2>/dev/null | tr -d ' ' || echo "")
+        GPU_RELATED_PIDS=$(ps aux | grep -E -i '(gpu|cuda|nvidia|torch|tensorflow|vllm|ray|python.*model)' | grep -v grep | grep -v "cleanup-all-baselines.sh" | awk '{print $2}' | grep -E '^[0-9]+$' || true)
+        
+                 # Combine and deduplicate PIDs
+         ALL_PIDS=$(echo -e "$GPU_PIDS\n$PMON_PIDS\n$CUDA_PIDS\n$GPU_RELATED_PIDS" | sort -u | grep -E '^[0-9]+$' || true)
+         
+         # Filter out current process, parent processes, and critical system processes
+         FILTERED_PIDS=""
+         for pid in $ALL_PIDS; do
+             if [ "$pid" != "$CURRENT_PID" ] && [ "$pid" != "$PARENT_PID" ] && [ "$pid" != "1" ]; then
+                 # Check if it's not a bash process running our script
+                 PROCESS_CMD=$(ps -p "$pid" -o args= 2>/dev/null || echo "")
+                 if [[ ! "$PROCESS_CMD" =~ cleanup-all-baselines.sh ]] && [[ ! "$PROCESS_CMD" =~ choose-and-deploy.sh ]]; then
+                     FILTERED_PIDS="$FILTERED_PIDS $pid"
+                 fi
+             fi
+         done
+         ALL_PIDS=$(echo $FILTERED_PIDS | tr ' ' '\n' | sort -u | grep -E '^[0-9]+$' || true)
+        
+        if [ -n "$ALL_PIDS" ]; then
+            echo "Found GPU-related processes, attempting to kill them..."
+                         for pid in $ALL_PIDS; do
+                 if [ -n "$pid" ] && [ "$pid" -gt 0 ] 2>/dev/null; then
+                     # Check if process still exists before trying to kill
+                     if kill -0 "$pid" 2>/dev/null; then
+                         PROCESS_NAME=$(ps -p "$pid" -o comm= 2>/dev/null || echo "unknown")
+                         PROCESS_CMD=$(ps -p "$pid" -o args= 2>/dev/null | head -c 50 || echo "unknown")
+                         echo "Killing GPU process PID: $pid ($PROCESS_NAME) - $PROCESS_CMD"
+                         # Try SIGTERM first, then SIGKILL
+                         if kill "$pid" 2>/dev/null; then
+                             echo "  Successfully sent SIGTERM to PID $pid"
+                         else
+                             echo "  SIGTERM failed, trying SIGKILL..."
+                             sleep 1
+                             if kill -9 "$pid" 2>/dev/null; then
+                                 echo "  Successfully sent SIGKILL to PID $pid"
+                             else
+                                 echo "  Trying with sudo..."
+                                 if sudo kill -9 "$pid" 2>/dev/null; then
+                                     echo "  Successfully killed PID $pid with sudo"
+                                 else
+                                     echo "  Failed to kill PID $pid (process may have already exited)"
+                                 fi
+                             fi
+                         fi
+                     else
+                         echo "Process PID $pid already exited"
+                     fi
+                 fi
+             done
+            
+            # Wait for processes to die and verify
+            echo "Waiting for processes to terminate..."
+            sleep 5
+            
+            # Verify GPU is actually free - try multiple times with backoff
+            echo "Verifying GPU processes are cleared..."
+            for i in {1..3}; do
+                REMAINING_COMPUTE=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
+                REMAINING_GRAPHICS=$(nvidia-smi --query-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
+                
+                if [ -z "$REMAINING_COMPUTE" ] && [ -z "$REMAINING_GRAPHICS" ]; then
+                    echo "GPU processes cleared successfully."
+                    break
+                elif [ $i -eq 3 ]; then
+                    echo "Warning: Some GPU processes may still be running after cleanup attempts:"
+                    if [ -n "$REMAINING_COMPUTE" ]; then
+                        echo "Compute processes:"
+                        nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader 2>/dev/null || true
+                    fi
+                    if [ -n "$REMAINING_GRAPHICS" ]; then
+                        echo "Graphics processes:"
+                        nvidia-smi --query-apps=pid,process_name,used_memory --format=csv,noheader 2>/dev/null || true
+                    fi
+                else
+                    echo "Retry $i: Some processes still running, waiting..."
+                    sleep 2
+                fi
+            done
+        else
+            echo "No GPU processes found to kill."
+        fi
+        
+        # Final GPU memory check
+        echo "Final GPU memory status:"
+        nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null || echo "Could not query GPU memory"
     fi
 else
     echo "nvidia-smi not found, skipping GPU cleanup"
@@ -108,8 +178,29 @@ if [[ -n "$PID_ON_30080" ]]; then
 fi
 sleep 2
 
-# 3. Ray Services Cleanup (for RayServe baseline)
-echo "3. Stopping Ray services..."
+# 3. Docker Container Cleanup (for Dynamo baseline)
+echo "3. Cleaning up Docker containers..."
+if command -v docker &> /dev/null; then
+    # Stop and remove dynamo containers
+    echo "Stopping dynamo containers..."
+    sudo docker stop $(sudo docker ps -q --filter "ancestor=dynamo:latest-vllm" --filter "name=dynamo-serve") 2>/dev/null || true
+    sudo docker rm $(sudo docker ps -aq --filter "ancestor=dynamo:latest-vllm" --filter "name=dynamo-serve") 2>/dev/null || true
+    
+    # Clean up any containers with dynamo in the name
+    DYNAMO_CONTAINERS=$(sudo docker ps -aq --filter "name=dynamo" 2>/dev/null || true)
+    if [ -n "$DYNAMO_CONTAINERS" ]; then
+        echo "Removing additional dynamo containers..."
+        sudo docker stop $DYNAMO_CONTAINERS 2>/dev/null || true
+        sudo docker rm $DYNAMO_CONTAINERS 2>/dev/null || true
+    fi
+    
+    echo "Docker containers cleaned up."
+else
+    echo "Docker not found, skipping Docker cleanup"
+fi
+
+# 4. Ray Services Cleanup (for RayServe baseline)
+echo "4. Stopping Ray services..."
 if command -v ray &> /dev/null; then
     ray stop --force 2>/dev/null || true
     echo "Ray services stopped."
@@ -117,8 +208,8 @@ else
     echo "Ray not found, skipping Ray cleanup"
 fi
 
-# 4. Helm Cleanup (for Helm-ProductionStack baseline)
-echo "4. Cleaning up Helm releases..."
+# 5. Helm Cleanup (for Helm-ProductionStack baseline)
+echo "5. Cleaning up Helm releases..."
 if command -v helm &> /dev/null; then
     # Get all helm releases and uninstall them
     HELM_RELEASES=$(helm list --all-namespaces -q 2>/dev/null || true)
@@ -137,8 +228,8 @@ else
     echo "Helm not found, skipping Helm cleanup"
 fi
 
-# 5. Kubernetes Resources Cleanup
-echo "5. Cleaning up Kubernetes resources..."
+# 6. Kubernetes Resources Cleanup
+echo "6. Cleaning up Kubernetes resources..."
 if command -v kubectl &> /dev/null && kubectl cluster-info &>/dev/null; then
     echo "Cluster is accessible, proceeding with Kubernetes cleanup..."
     
@@ -221,4 +312,9 @@ fi
 pkill -f "kubectl port-forward" 2>/dev/null || true
 
 echo "=== Comprehensive cleanup completed ==="
-echo "All baselines have been cleaned up. Ready for fresh deployment." 
+echo "All baselines have been cleaned up. Ready for fresh deployment."
+
+# Add a 5-second buffer to ensure all cleanup operations have fully completed
+echo "Waiting 5 seconds for cleanup operations to fully complete..."
+sleep 5
+echo "Cleanup script finished successfully." 

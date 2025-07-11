@@ -125,54 +125,72 @@ def validate_single_spec_config(config: Dict[str, Any], file_path: str) -> Dict[
         if baseline_type == 'SGLang':
             script_name = baseline_config.get('scriptName')
             model_url = baseline_config.get('modelURL')
+            api_type = baseline_config.get('apiType', 'completions')  # Default to completions for backward compatibility
             if not script_name:
                 raise ValueError(f"scriptName must be specified for SGLang baseline {i} in {file_path}")
             if not model_url:
                 raise ValueError(f"modelURL must be specified for SGLang baseline {i} in {file_path}")
+            if api_type not in ['completions', 'chat']:
+                raise ValueError(f"apiType must be 'completions' or 'chat' for SGLang baseline {i} in {file_path}, got: {api_type}")
         elif baseline_type == 'RayServe':
             script_name = baseline_config.get('scriptName')
             accelerator_type = baseline_config.get('acceleratorType')
             model_url = baseline_config.get('modelURL')
+            api_type = baseline_config.get('apiType', 'completions')  # Default to completions for backward compatibility
             if not script_name:
                 raise ValueError(f"scriptName must be specified for RayServe baseline {i} in {file_path}")
             if not accelerator_type:
                 raise ValueError(f"acceleratorType must be specified for RayServe baseline {i} in {file_path}")
             if not model_url:
                 raise ValueError(f"modelURL must be specified for RayServe baseline {i} in {file_path}")
+            if api_type not in ['completions', 'chat']:
+                raise ValueError(f"apiType must be 'completions' or 'chat' for RayServe baseline {i} in {file_path}, got: {api_type}")
         elif baseline_type == 'Helm-ProductionStack':
             helm_config = baseline_config.get('helmConfigSelection', '')
             hf_token = baseline_config.get('hf_token')
             model_url = baseline_config.get('modelURL')
+            api_type = baseline_config.get('apiType', 'completions')  # Default to completions for backward compatibility
             if not helm_config:
                 raise ValueError(f"helmConfigSelection must be specified for Helm-ProductionStack baseline {i} in {file_path}")
             if not hf_token:
                 raise ValueError(f"hf_token must be specified for Helm-ProductionStack baseline {i} in {file_path}")
             if not model_url:
                 raise ValueError(f"modelURL must be specified for Helm-ProductionStack baseline {i} in {file_path}")
+            if api_type not in ['completions', 'chat']:
+                raise ValueError(f"apiType must be 'completions' or 'chat' for Helm-ProductionStack baseline {i} in {file_path}, got: {api_type}")
         elif baseline_type == 'Direct-ProductionStack':
             model_url = baseline_config.get('modelURL')
             hf_token = baseline_config.get('hf_token')
+            api_type = baseline_config.get('apiType', 'completions')  # Default to completions for backward compatibility
             if not model_url:
                 raise ValueError(f"modelURL must be specified for Direct-ProductionStack baseline {i} in {file_path}")
             if not hf_token:
                 raise ValueError(f"hf_token must be specified for Direct-ProductionStack baseline {i} in {file_path}")
+            if api_type not in ['completions', 'chat']:
+                raise ValueError(f"apiType must be 'completions' or 'chat' for Direct-ProductionStack baseline {i} in {file_path}, got: {api_type}")
         elif baseline_type == 'LLM-D':
             config_selection = baseline_config.get('configSelection')
             model_url = baseline_config.get('modelURL')
             hf_token = baseline_config.get('hf_token')
+            api_type = baseline_config.get('apiType', 'completions')  # Default to completions for backward compatibility
             if not config_selection:
                 raise ValueError(f"configSelection must be specified for LLM-D baseline {i} in {file_path}")
             if not model_url:
                 raise ValueError(f"modelURL must be specified for LLM-D baseline {i} in {file_path}")
             if not hf_token:
                 raise ValueError(f"hf_token must be specified for LLM-D baseline {i} in {file_path}")
+            if api_type not in ['completions', 'chat']:
+                raise ValueError(f"apiType must be 'completions' or 'chat' for LLM-D baseline {i} in {file_path}, got: {api_type}")
         elif baseline_type == 'Dynamo':
             config_selection = baseline_config.get('configSelection')
             model_url = baseline_config.get('modelURL')
+            api_type = baseline_config.get('apiType', 'completions')  # Default to completions for backward compatibility
             if not config_selection:
                 raise ValueError(f"configSelection must be specified for Dynamo baseline {i} in {file_path}")
             if not model_url:
                 raise ValueError(f"modelURL must be specified for Dynamo baseline {i} in {file_path}")
+            if api_type not in ['completions', 'chat']:
+                raise ValueError(f"apiType must be 'completions' or 'chat' for Dynamo baseline {i} in {file_path}, got: {api_type}")
         else:
             raise ValueError(f"Unsupported baseline type: {baseline_type} in baseline {i} in {file_path}")
 
@@ -353,6 +371,9 @@ def setup_single_baseline(serving_config: Dict[str, Any], global_config: Dict[st
             raise ValueError(f"modelURL must be specified for SGLang baseline {serving_index}")
         MODEL_URL = model_url
         # HF_TOKEN is read directly from environment variable by the script
+        HF_TOKEN = os.environ.get('HF_TOKEN')
+        if not HF_TOKEN:
+            raise ValueError("HF_TOKEN environment variable is not set")
         sglang_installation(baseline_config)
 
     elif baseline_type == 'RayServe':
@@ -361,6 +382,9 @@ def setup_single_baseline(serving_config: Dict[str, Any], global_config: Dict[st
             raise ValueError(f"modelURL must be specified for RayServe baseline {serving_index}")
         MODEL_URL = model_url
         # HF_TOKEN is read directly from environment variable by the script
+        HF_TOKEN = os.environ.get('HF_TOKEN')
+        if not HF_TOKEN:
+            raise ValueError("HF_TOKEN environment variable is not set")
         rayserve_installation(baseline_config)
 
     elif baseline_type == 'Helm-ProductionStack':
@@ -399,10 +423,13 @@ def setup_single_baseline(serving_config: Dict[str, Any], global_config: Dict[st
     elif baseline_type == 'Dynamo':
         config_selection = baseline_config.get('configSelection')
         model_url = baseline_config.get('modelURL')
+        api_type = baseline_config.get('apiType', 'completions')  # Default to completions for backward compatibility
         if not config_selection:
             raise ValueError(f"configSelection must be specified for Dynamo baseline {serving_index}")
         if not model_url:
             raise ValueError(f"modelURL must be specified for Dynamo baseline {serving_index}")
+        if api_type not in ['completions', 'chat']:
+            raise ValueError(f"apiType must be 'completions' or 'chat' for Dynamo baseline {serving_index}, got: {api_type}")
         MODEL_URL = model_url
         # HF_TOKEN is read directly from environment variable by the script
         HF_TOKEN = os.environ.get('HF_TOKEN')
@@ -816,10 +843,17 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
     if not hasattr(run_synthetic, 'share_gpt_generated'):
         run_synthetic.share_gpt_generated = False
 
-    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH, LMBENCH_SESSION_ID
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH, LMBENCH_SESSION_ID, CURRENT_SERVING_CONFIG
 
     # Read the benchmark name from the current spec config
     benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
+
+    # Get apiType from the current serving configuration
+    api_type = 'completions'  # Default value
+    if CURRENT_SERVING_CONFIG:
+        baseline_type = list(CURRENT_SERVING_CONFIG.keys())[0]
+        baseline_config = CURRENT_SERVING_CONFIG[baseline_type]
+        api_type = baseline_config.get('apiType', 'completions')  # Default to completions for backward compatibility
 
     qps_values = synthetic_config.get('QPS')
     NUM_USERS_WARMUP = synthetic_config.get('NUM_USERS_WARMUP')
@@ -860,6 +894,7 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
     SERVING_INDEX=${12}
     SPEC_FILE_PATH=${13}
     LMBENCH_SESSION_ID=${14}
+    API_TYPE=${15}
     [qps_values...]
     """
     cmd.extend([str(NUM_USERS_WARMUP)])
@@ -873,6 +908,7 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
     cmd.extend([str(CURRENT_SERVING_INDEX)])
     cmd.extend([str(CURRENT_SPEC_FILE_PATH)]) # Pass the spec file path
     cmd.extend([str(LMBENCH_SESSION_ID)]) # Pass the session ID
+    cmd.extend([str(api_type)]) # Pass the API type
     cmd.extend([str(qps) for qps in qps_values])
 
     # Execute the workload

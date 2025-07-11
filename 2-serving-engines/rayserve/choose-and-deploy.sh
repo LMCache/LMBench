@@ -87,9 +87,9 @@ fi
 
 # Step 4: Install dependencies - use the working combination
 echo "Step 4: Installing RayServe dependencies..."
-deactivate || true
 python -m venv ray_venv
 source ray_venv/bin/activate
+echo "Activated RayServe environment"
 pip install ray[serve,llm]==2.47.0 vllm==0.9.1 
 pip install xgrammar==0.1.19 pynvml==12.0.0 botocore==1.39.4
 

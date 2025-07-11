@@ -20,7 +20,7 @@ Common:
   model: Qwen/Qwen3-32B
   router: kv
   block-size: 64
-  max-model-len: 16384  # Reduced from 26000 to avoid memory issues without TP
+  max-model-len: 16384  # Reduced from 27000 to avoid memory issues without TP
   kv-transfer-config: '{"kv_connector":"DynamoNixlConnector"}'
 
 Frontend:

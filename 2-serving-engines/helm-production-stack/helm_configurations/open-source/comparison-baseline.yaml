@@ -7,14 +7,13 @@ servingEngineSpec:
     modelURL: "Qwen/Qwen3-32B"
     replicaCount: 4
     requestCPU: 10
-    requestMemory: "70Gi"
+    requestMemory: "250Gi"
     requestGPU: 2
     pvcStorage: "50Gi"
     pvcAccessMode:
       - ReadWriteOnce
     vllmConfig:
-      enablePrefixCaching: true
-      maxModelLen: 26000
+      maxModelLen: 28000
       v1: 1
       tensorParallelSize: 2
       extraArgs:
@@ -22,7 +21,7 @@ servingEngineSpec:
         - "2"
     lmcacheConfig:
       enabled: true
-      cpuOffloadingBufferSize: "100"
+      cpuOffloadingBufferSize: "120"
     hf_token: <YOUR_HF_TOKEN>
     shmSize: "40Gi"
 

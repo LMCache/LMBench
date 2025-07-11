@@ -37,6 +37,26 @@ Serving baselines expose an OpenAI-compatible endpoint on `localhost:30080` for 
 export HF_TOKEN="hf_your_token_here"
 ```
 
+## API Type Configuration
+
+**NEW**: Baselines can now specify which OpenAI-compatible API endpoint to use via the `apiType` parameter:
+
+- `"completions"` (default): Uses `/v1/completions` endpoint with prompt string format
+- `"chat"`: Uses `/v1/chat/completions` endpoint with messages array format
+
+**Configuration Example**:
+```yaml
+- Dynamo:
+    configSelection: comparison-baseline.yaml
+    modelURL: meta-llama/Llama-3.1-8B-Instruct
+    apiType: chat  # Use chat completions API instead of completions
+```
+
+**Compatibility**:
+- All existing configurations default to `"completions"` for backward compatibility
+- Workload generators automatically adapt to the specified API type
+- Required for baselines that only support chat completions (e.g., some Dynamo configurations)
+
 ## Required Components
 
 ### 1. Setup Script (`2-serving-engines/your-baseline/setup.sh`)

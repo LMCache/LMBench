@@ -17,13 +17,6 @@ sampleApplication:
       nvidia.com/gpu: 2
   prefill:
     replicas: 0 # disable prefill for now
-    extraArgs:
-      - "--tensor-parallel-size"
-      - "2"  # 2-way tensor parallelism per pod
-      - "--distributed-executor-backend"
-      - "mp"
-      - "--max-model-len"
-      - "26000"
   decode:
     replicas: 4  # 4 decode replicas  
     extraArgs:
@@ -32,7 +25,7 @@ sampleApplication:
       - "--distributed-executor-backend"
       - "mp"
       - "--max-model-len"
-      - "32000"
+      - "28000"
 
 redis:
   enabled: true  # Enable Redis for advanced routing
@@ -47,16 +40,4 @@ modelservice:
       - name: ENABLE_LOAD_AWARE_SCORER
         value: "true"
       - name: ENABLE_SESSION_AWARE_SCORER
-        value: "true"
-      - name: PD_ENABLED
-        value: "true"
-      - name: PD_PROMPT_LEN_THRESHOLD
-        value: "10"
-      - name: PREFILL_ENABLE_KVCACHE_AWARE_SCORER
-        value: "true"
-      - name: PREFILL_ENABLE_LOAD_AWARE_SCORER
-        value: "true"
-      - name: PREFILL_ENABLE_PREFIX_AWARE_SCORER
-        value: "true"
-      - name: PREFILL_ENABLE_SESSION_AWARE_SCORER
         value: "true"
