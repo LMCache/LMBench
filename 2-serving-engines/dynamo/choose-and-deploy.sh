@@ -147,6 +147,8 @@ except ImportError:
     print('✓ Clean state achieved - no vLLM found')
 " || echo "✓ Clean state confirmed"
 
+python -m venv dynamo_venv
+source dynamo_venv/bin/activate
 # Now install ONLY ai-dynamo which includes ai_dynamo_vllm
 echo "Installing ONLY ai-dynamo[all]"
 $PIP_CMD install "ai-dynamo[all]==0.3.1"
@@ -365,6 +367,10 @@ echo "This follows the official documentation for aggregated architecture (multi
 echo "Starting dynamo serve process using official CLI..."
 # Ensure HF_TOKEN is passed to the dynamo serve process
 export HF_TOKEN="$HF_TOKEN"
+export VLLM_WORKER_MULTIPROC_METHOD=spawn
+export TORCH_DISTRIBUTED_DEBUG=DETAIL
+export NCCL_DEBUG=DEBUG
+export CUDA_LAUNCH_BLOCKING=1
 nohup env \
     HF_TOKEN="$HF_TOKEN" \
     CUDA_LIB_DIR="$CUDA_LIB_DIR" \
@@ -372,7 +378,7 @@ nohup env \
     LD_PRELOAD="$LD_PRELOAD" \
     VLLM_PLUGINS="$VLLM_PLUGINS" \
     VLLM_NO_USAGE_STATS="$VLLM_NO_USAGE_STATS" \
-    VLLM_DISABLE_CUSTOM_ALL_REDUCE="$VLLM_DISABLE_CUSTOM_ALL_REDUCE" \
+    VLLM_DISABLE_CUSTOM_ALL_REDUCE=0 \
     NCCL_DEBUG="$NCCL_DEBUG" \
     dynamo serve graphs.agg_router:Frontend -f "./configs/$CONFIG_FILENAME" > "$SCRIPT_DIR/dynamo_serve.log" 2>&1 &
 DYNAMO_PID=$!

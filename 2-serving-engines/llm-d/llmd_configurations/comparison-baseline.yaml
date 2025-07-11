@@ -32,7 +32,7 @@ sampleApplication:
       - "--distributed-executor-backend"
       - "mp"
       - "--max-model-len"
-      - "32000"
+      - "27000"
 
 redis:
   enabled: true  # Enable Redis for advanced routing

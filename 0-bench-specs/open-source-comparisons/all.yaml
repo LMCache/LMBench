@@ -1,4 +1,4 @@
-Name: Open-Source-Comparison
+Name: OSS-4xH100-Qwen3-32B-TP2-Comparison
 
 # Suggested Infrastructure (in run-bench.yaml)
 # 1-infrastructure:
@@ -7,24 +7,24 @@ Name: Open-Source-Comparison
 #   All deployments below use 4x Qwen-32B with tensor parallelism 2
 
 Serving:
-  # - Helm-ProductionStack:
-  #     helmConfigSelection: open-source/comparison-baseline.yaml
-  #     hf_token: <YOUR_HF_TOKEN>
-  #     modelURL: Qwen/Qwen3-32B
-  # - SGLang:
-  #     scriptName: comparison-baseline.sh
-  #     modelURL: Qwen/Qwen3-32B
+  - Helm-ProductionStack:
+      helmConfigSelection: open-source/comparison-baseline.yaml
+      hf_token: <YOUR_HF_TOKEN>
+      modelURL: Qwen/Qwen3-32B
+  - SGLang:
+      scriptName: comparison-baseline.sh
+      modelURL: Qwen/Qwen3-32B
   - RayServe:
       scriptName: comparison-baseline.py
       acceleratorType: H100
-      modelURL: Qwen/Qwen3-14B
-  # - LLM-D:
-  #     configSelection: comparison-baseline.yaml
-  #     modelURL: Qwen/Qwen3-32B
-  #     hf_token: <YOUR_HF_TOKEN>
+      modelURL: Qwen/Qwen3-32B
+  - LLM-D:
+      configSelection: comparison-baseline.yaml
+      modelURL: Qwen/Qwen3-32B
+      hf_token: <YOUR_HF_TOKEN>
   # - Dynamo:
   #     configSelection: comparison-baseline.yaml
-  #     modelURL: Qwen/Qwen3-14B
+  #     modelURL: Qwen/Qwen3-32B
 
 Workload:
 
@@ -35,6 +35,6 @@ Workload:
       NUM_ROUNDS: 60
       SYSTEM_PROMPT: 1000
       CHAT_HISTORY: 20000
-      ANSWER_LEN: 200
-      QPS: [4]
+      ANSWER_LEN: 100
+      QPS: [1, 2, 3, 4, 5, 6]
       USE_SHAREGPT: false

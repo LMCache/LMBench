@@ -37,14 +37,14 @@ VllmWorker:
   enforce-eager: true
   max-num-batched-tokens: 26000
   enable-prefix-caching: true
-  tensor-parallel-size: 1
+  tensor-parallel-size: 2
   # Aggregated settings - no remote prefill
   remote-prefill: false
   ServiceArgs:
-    workers: 4
+    workers: 1
     resources:
       gpu: '2' # per worker
-  common-configs: [model, block-size, max-model-len, router]
+  common-configs: [model, block-size, max-model-len, router, kv-transfer-config]
 
 # No PrefillWorker section - this is aggregated architecture
 
