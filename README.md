@@ -16,7 +16,7 @@ LMBench is a benchmarking framework for [LMCache](https://github.com/LMCache/LMC
 - **Baseline**: Serving system exposing OpenAI-compatible API on `localhost:30080`
 - **Workload**: Traffic generator simulating specific usage patterns
 
-## Modular Structure
+## Modular Structure (Minimal Overview)
 
 ```
 LMBench/
