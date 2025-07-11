@@ -20,8 +20,10 @@ LMBench is a benchmarking framework for [LMCache](https://github.com/LMCache/LMC
 
 ```
 LMBench/
-├── 0-bench-specs/           # Suite definitions (baselines × workloads)
-│   └── TEMPLATE-spec.yaml   # All available options
+├── 0-bench-specs/                # Suite definitions (baselines × workloads)
+│   ├── daily/                    # Daily Benchmarks that show up on lmbench.dev
+│   ├── open-source-comparisons/  # Comparison Specs for OSS engines/orchestration layers
+│   └── TEMPLATE-spec.yaml        # All available options
 ├── 1-infrastructure/        # Platform setup (K8s clusters, cloud resources)
 │   ├── lmcache-gke/        # Google Kubernetes Engine
 │   ├── local-minikube/     # Local Kubernetes
