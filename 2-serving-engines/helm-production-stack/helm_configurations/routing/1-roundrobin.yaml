@@ -14,7 +14,7 @@ servingEngineSpec:
       - ReadWriteOnce
     vllmConfig:
       enablePrefixCaching: true
-      maxModelLen: 32000
+      maxModelLen: 26000
       v1: 1
     lmcacheConfig:
       enabled: true

@@ -222,4 +222,34 @@ Workload:
       TEMPERATURE: 0.0
       MAX_TOKENS: 256
 
+  StrictSynthetic:
+    # Strict Synthetic workload for measuring benchmarks in a more controlled way
+    # QPS is calculated as NUM_CONCURRENT_USERS / TIME_BETWEEN_REQUESTS_PER_USER
+    # User ID is automatically included in requests (enabled by default)
+    - NUM_CONCURRENT_USERS: 10  # Number of concurrent users in the system
+      NUM_ROUNDS_PER_USER: 5    # Number of rounds per user
+      TIME_BETWEEN_REQUESTS_PER_USER: [10, 20, 30]  # Time between requests per user (seconds)
+      SHARED_SYSTEM_PROMPT_LEN: 100   # Length of shared system prompt (tokens)
+      FIRST_PROMPT_LEN: 200           # Length of first prompt (tokens)
+      FOLLOW_UP_PROMPTS_LEN: 100      # Length of follow-up prompts (tokens)
+      ANSWER_LEN: 150                 # Length of answers (tokens)
+
+    # Example with different user concurrency levels
+    - NUM_CONCURRENT_USERS: 5
+      NUM_ROUNDS_PER_USER: 10
+      TIME_BETWEEN_REQUESTS_PER_USER: [5, 15]
+      SHARED_SYSTEM_PROMPT_LEN: 50
+      FIRST_PROMPT_LEN: 300
+      FOLLOW_UP_PROMPTS_LEN: 150
+      ANSWER_LEN: 200
+
+    # Example for high-throughput testing
+    - NUM_CONCURRENT_USERS: 20
+      NUM_ROUNDS_PER_USER: 3
+      TIME_BETWEEN_REQUESTS_PER_USER: [2, 5]
+      SHARED_SYSTEM_PROMPT_LEN: 0
+      FIRST_PROMPT_LEN: 100
+      FOLLOW_UP_PROMPTS_LEN: 50
+      ANSWER_LEN: 100
+
 

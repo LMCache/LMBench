@@ -10,11 +10,14 @@
   # - layerwise/layerwise-no-prefix-spec.yaml
   # - layerwise/layerwise-debug-w.yaml
   # - single-debug/llmd-basic-spec.yaml
-  - open-source-comparisons/all.yaml
+  # - open-source-comparisons/all.yaml
+  - single-debug/strict-synthetic-spec.yaml
+
 
 1-infrastructure:
   Location: LocalMinikube
   # Location: NoBench
+  # Location: Local-Flat
   # Location: LMCacheGKE
   # numClusterGPUs: 1
   # A100_VRAM: 40

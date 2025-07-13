@@ -1,8 +1,9 @@
 # If you are running locally, make sure to set the HF_TOKEN environment variable
 # Only the spec files listed below will be processed. Template files and other files in 0-bench-specs are ignored.
 0-bench-specs:
-  - layerwise-spec.yaml
-  - routing-spec.yaml
+  # - layerwise-spec.yaml
+  # - routing-spec.yaml
+  # - single-debug/strict-synthetic-spec.yaml
 
 1-infrastructure:
   # Choose exactly one of the following:

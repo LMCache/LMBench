@@ -67,10 +67,14 @@ cleanup_minikube() {
   kubectl config delete-cluster minikube 2>/dev/null || true
   kubectl config delete-user minikube 2>/dev/null || true
 
-  # Prune minikube docker images
-  eval $(minikube docker-env)
-  docker system prune -a --volumes -f
-  eval $(minikube docker-env -u)
+  # Prune minikube docker images (only if minikube is running)
+  if minikube status >/dev/null 2>&1; then
+    eval $(minikube docker-env)
+    docker system prune -a --volumes -f
+    eval $(minikube docker-env -u)
+  else
+    echo "Skipping docker cleanup - minikube not running"
+  fi
 
   # Clean up any remaining minikube docker networks
   docker network ls --filter name=minikube --format "{{.ID}}" | xargs -r docker network rm 2>/dev/null || true
@@ -160,6 +164,8 @@ if kubectl describe nodes | grep -q "nvidia.com/gpu"; then
   echo "GPU is detected on the Kubernetes node"
 else
   echo "GPU not found on the node. Check GPU drivers and device plugin status."
+  echo "Checking GPU status in detail..."
+  kubectl describe nodes | grep -A 10 -B 5 -i "gpu\|nvidia" || echo "No GPU resources found in node description"
   exit 1
 fi
 

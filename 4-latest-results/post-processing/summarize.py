@@ -23,6 +23,8 @@ def ProcessSummary(
     end_time: Optional[float] = None,
     pending_queries: int = 0,
     qps: Optional[float] = None,
+    is_strict_synthetic: bool = False,
+    num_rounds_per_user: Optional[int] = None,
 ) -> dict:
     """Process benchmark results and return as a dictionary."""
     # Check if the DataFrame is empty
@@ -43,19 +45,16 @@ def ProcessSummary(
             qps = 0.0
 
         if start_time is None:
-            start_time = df["launch_time"].min()
+            start_time = float(df["launch_time"].min())
         if end_time is None:
-            end_time = df["finish_time"].max()
+            end_time = float(df["finish_time"].max())
 
         total_time = end_time - start_time
         total_requests = launched_queries + pending_queries
         finished_requests = len(df)
-        request_throughput = finished_requests / total_time
-
+        
         total_prompt_tokens = df["prompt_tokens"].sum()
         total_generation_tokens = df["generation_tokens"].sum()
-        output_token_throughput = total_generation_tokens / total_time
-        total_token_throughput = (total_prompt_tokens + total_generation_tokens) / total_time
 
         # TTFT stats (in milliseconds)
         ttft_ms = df["ttft"] * 1000
@@ -80,6 +79,47 @@ def ProcessSummary(
         median_itl = itl.median()
         p99_itl = np.percentile(itl, 99)
 
+        # Handle strict synthetic workload differently
+        if is_strict_synthetic and num_rounds_per_user is not None:
+            print("Processing strict synthetic workload with configured QPS")
+            
+            # For strict synthetic, use the configured QPS directly (already calculated in bash script)
+            # The QPS passed in is: num_concurrent_users / time_between_requests_per_user
+            request_throughput = qps if qps is not None else 0
+            print(f"Using configured QPS: {request_throughput}")
+            
+            # For token throughputs, we still use observed timing but only for duration calculation
+            if not df.empty:
+                # Use the observed timing span for token throughput calculations
+                start_time = float(df["launch_time"].min())
+                end_time = float(df["finish_time"].max())
+                observed_duration = end_time - start_time
+                finished_requests = len(df)
+                total_prompt_tokens = df["prompt_tokens"].sum()
+                total_generation_tokens = df["generation_tokens"].sum()
+                
+                print(f"Observed timing: {observed_duration:.2f}s duration, {finished_requests} requests")
+                print(f"Token throughput based on observed duration:")
+                
+                # Calculate token throughputs based on observed duration
+                output_token_throughput = total_generation_tokens / observed_duration if observed_duration > 0 else 0
+                input_token_throughput = total_prompt_tokens / observed_duration if observed_duration > 0 else 0
+                total_token_throughput = (total_prompt_tokens + total_generation_tokens) / observed_duration if observed_duration > 0 else 0
+                
+                # Override total_time and finished_requests for final reporting
+                total_time = observed_duration
+            else:
+                output_token_throughput = 0
+                input_token_throughput = 0
+                total_token_throughput = 0
+            
+        else:
+            # Standard global calculations
+            request_throughput = finished_requests / total_time
+            output_token_throughput = total_generation_tokens / total_time
+            input_token_throughput = total_prompt_tokens / total_time
+            total_token_throughput = (total_prompt_tokens + total_generation_tokens) / total_time
+
         return {
             "successful_requests": int(finished_requests),
             "benchmark_duration_s": round(total_time, 2),
@@ -87,6 +127,7 @@ def ProcessSummary(
             "total_generated_tokens": int(total_generation_tokens),
             "request_throughput_req_per_s": round(request_throughput, 2),
             "output_token_throughput_tok_per_s": round(output_token_throughput, 2),
+            "input_token_throughput_tok_per_s": round(input_token_throughput, 2),
             "total_token_throughput_tok_per_s": round(total_token_throughput, 2),
             "ttft_ms": {
                 "mean": round(mean_ttft, 2),
@@ -219,8 +260,24 @@ def process_output(filename: str, **kwargs):
                 qps = calculated_qps
                 print(f"Calculated QPS for agentic workload: {qps}")
 
+            # Check if this is strict synthetic workload
+            is_strict_synthetic = kwargs.get('IS_STRICT_SYNTHETIC', 'false').lower() == 'true'
+            num_rounds_per_user = None
+            if is_strict_synthetic:
+                try:
+                    num_rounds_per_user = int(kwargs.get('NUM_ROUNDS_PER_USER', 1))
+                    print(f"Processing strict synthetic workload with {num_rounds_per_user} rounds per user")
+                except (ValueError, TypeError):
+                    print("Warning: Could not parse NUM_ROUNDS_PER_USER, using 1 as default")
+                    num_rounds_per_user = 1
+
             # Process benchmark results using the standard method
-            results = ProcessSummary(df, pending_queries=0)
+            results = ProcessSummary(
+                df, 
+                pending_queries=0,
+                is_strict_synthetic=is_strict_synthetic,
+                num_rounds_per_user=num_rounds_per_user
+            )
 
         # Create timestamp
         timestamp = datetime.now().strftime("%Y%m%d-%H%M")

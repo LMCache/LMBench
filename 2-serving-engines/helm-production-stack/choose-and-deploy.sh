@@ -103,6 +103,8 @@ while true; do
       
       # Monitor rollout progress with observability
       ROLLOUT_START=$(date +%s)
+      CONSECUTIVE_FAILURES=0
+      MAX_CONSECUTIVE_FAILURES=6  # 30 seconds of consecutive failures
       while true; do
         ROLLOUT_CURRENT=$(date +%s)
         ROLLOUT_ELAPSED=$((ROLLOUT_CURRENT - ROLLOUT_START))

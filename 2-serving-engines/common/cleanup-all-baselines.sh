@@ -54,111 +54,73 @@ unset NCCL_IB_DISABLE
 unset OMP_NUM_THREADS
 echo "Environment variables cleaned up."
 
-# 1. GPU Process Cleanup
+# 1. GPU Process Cleanup (Simple nvidia-smi based approach)
 echo "1. Clearing GPU processes..."
 if command -v nvidia-smi &> /dev/null; then
-    echo "Killing GPU processes..."
+    echo "Checking for GPU processes..."
     
     # Check if GPUs are available and accessible
     if ! nvidia-smi &>/dev/null; then
         echo "Warning: nvidia-smi command failed, GPUs may not be accessible"
         echo "nvidia-smi not accessible, skipping GPU cleanup"
     else
-        # Method 1: Use nvidia-smi to get compute processes
-        GPU_PIDS=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
+        # Get compute processes from nvidia-smi
+        GPU_COMPUTE_PIDS=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
         
-        # Method 2: Also check pmon output for additional processes
-        PMON_PIDS=$(nvidia-smi pmon -c 1 2>/dev/null | awk 'NR>2 && $2!="[Unknown]" && $2!="-" {print $2}' | grep -E '^[0-9]+$' || true)
+        # Get graphics processes from nvidia-smi  
+        GPU_GRAPHICS_PIDS=$(nvidia-smi --query-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
         
-        # Method 3: Check for processes using GPU libraries and CUDA
-        CUDA_PIDS=$(lsof 2>/dev/null | grep -E '(libcuda|libnvidia|/dev/nvidia)' | awk '{print $2}' | sort -u | grep -E '^[0-9]+$' || true)
+        # Combine and deduplicate PIDs from nvidia-smi only
+        ALL_GPU_PIDS=$(echo -e "$GPU_COMPUTE_PIDS\n$GPU_GRAPHICS_PIDS" | sort -u | grep -E '^[0-9]+$' || true)
         
-        # Method 4: Find processes with "gpu", "cuda", "nvidia" in command line (excluding current shell and parents)
-        CURRENT_PID=$$
-        PARENT_PID=$(ps -o ppid= -p $CURRENT_PID 2>/dev/null | tr -d ' ' || echo "")
-        GPU_RELATED_PIDS=$(ps aux | grep -E -i '(gpu|cuda|nvidia|torch|tensorflow|vllm|ray|python.*model)' | grep -v grep | grep -v "cleanup-all-baselines.sh" | awk '{print $2}' | grep -E '^[0-9]+$' || true)
-        
-                 # Combine and deduplicate PIDs
-         ALL_PIDS=$(echo -e "$GPU_PIDS\n$PMON_PIDS\n$CUDA_PIDS\n$GPU_RELATED_PIDS" | sort -u | grep -E '^[0-9]+$' || true)
-         
-         # Filter out current process, parent processes, and critical system processes
-         FILTERED_PIDS=""
-         for pid in $ALL_PIDS; do
-             if [ "$pid" != "$CURRENT_PID" ] && [ "$pid" != "$PARENT_PID" ] && [ "$pid" != "1" ]; then
-                 # Check if it's not a bash process running our script
-                 PROCESS_CMD=$(ps -p "$pid" -o args= 2>/dev/null || echo "")
-                 if [[ ! "$PROCESS_CMD" =~ cleanup-all-baselines.sh ]] && [[ ! "$PROCESS_CMD" =~ choose-and-deploy.sh ]]; then
-                     FILTERED_PIDS="$FILTERED_PIDS $pid"
-                 fi
-             fi
-         done
-         ALL_PIDS=$(echo $FILTERED_PIDS | tr ' ' '\n' | sort -u | grep -E '^[0-9]+$' || true)
-        
-        if [ -n "$ALL_PIDS" ]; then
-            echo "Found GPU-related processes, attempting to kill them..."
-                         for pid in $ALL_PIDS; do
-                 if [ -n "$pid" ] && [ "$pid" -gt 0 ] 2>/dev/null; then
-                     # Check if process still exists before trying to kill
-                     if kill -0 "$pid" 2>/dev/null; then
-                         PROCESS_NAME=$(ps -p "$pid" -o comm= 2>/dev/null || echo "unknown")
-                         PROCESS_CMD=$(ps -p "$pid" -o args= 2>/dev/null | head -c 50 || echo "unknown")
-                         echo "Killing GPU process PID: $pid ($PROCESS_NAME) - $PROCESS_CMD"
-                         # Try SIGTERM first, then SIGKILL
-                         if kill "$pid" 2>/dev/null; then
-                             echo "  Successfully sent SIGTERM to PID $pid"
-                         else
-                             echo "  SIGTERM failed, trying SIGKILL..."
-                             sleep 1
-                             if kill -9 "$pid" 2>/dev/null; then
-                                 echo "  Successfully sent SIGKILL to PID $pid"
-                             else
-                                 echo "  Trying with sudo..."
-                                 if sudo kill -9 "$pid" 2>/dev/null; then
-                                     echo "  Successfully killed PID $pid with sudo"
-                                 else
-                                     echo "  Failed to kill PID $pid (process may have already exited)"
-                                 fi
-                             fi
-                         fi
-                     else
-                         echo "Process PID $pid already exited"
-                     fi
-                 fi
-             done
+        if [ -n "$ALL_GPU_PIDS" ]; then
+            echo "Found GPU processes from nvidia-smi, attempting to kill them..."
+            for pid in $ALL_GPU_PIDS; do
+                if [ -n "$pid" ] && [ "$pid" -gt 0 ] 2>/dev/null; then
+                    # Check if process still exists before trying to kill
+                    if kill -0 "$pid" 2>/dev/null; then
+                        PROCESS_NAME=$(ps -p "$pid" -o comm= 2>/dev/null || echo "unknown")
+                        PROCESS_CMD=$(ps -p "$pid" -o args= 2>/dev/null | head -c 50 || echo "unknown")
+                        echo "Killing GPU process PID: $pid ($PROCESS_NAME) - $PROCESS_CMD"
+                        # Use sudo kill -9 directly as requested
+                        if sudo kill -9 "$pid" 2>/dev/null; then
+                            echo "  Successfully killed PID $pid"
+                        else
+                            echo "  Failed to kill PID $pid (process may have already exited)"
+                        fi
+                    else
+                        echo "Process PID $pid already exited"
+                    fi
+                fi
+            done
             
             # Wait for processes to die and verify
             echo "Waiting for processes to terminate..."
-            sleep 5
+            sleep 3
             
-            # Verify GPU is actually free - try multiple times with backoff
+            # Verify GPU is actually free
             echo "Verifying GPU processes are cleared..."
-            for i in {1..3}; do
-                REMAINING_COMPUTE=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
-                REMAINING_GRAPHICS=$(nvidia-smi --query-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
-                
-                if [ -z "$REMAINING_COMPUTE" ] && [ -z "$REMAINING_GRAPHICS" ]; then
-                    echo "GPU processes cleared successfully."
-                    break
-                elif [ $i -eq 3 ]; then
-                    echo "Warning: Some GPU processes may still be running after cleanup attempts:"
-                    if [ -n "$REMAINING_COMPUTE" ]; then
-                        echo "Compute processes:"
-                        nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader 2>/dev/null || true
-                    fi
-                    if [ -n "$REMAINING_GRAPHICS" ]; then
-                        echo "Graphics processes:"
-                        nvidia-smi --query-apps=pid,process_name,used_memory --format=csv,noheader 2>/dev/null || true
-                    fi
-                else
-                    echo "Retry $i: Some processes still running, waiting..."
-                    sleep 2
+            REMAINING_COMPUTE=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
+            REMAINING_GRAPHICS=$(nvidia-smi --query-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
+            
+            if [ -z "$REMAINING_COMPUTE" ] && [ -z "$REMAINING_GRAPHICS" ]; then
+                echo "GPU processes cleared successfully."
+            else
+                echo "Warning: Some GPU processes may still be running:"
+                if [ -n "$REMAINING_COMPUTE" ]; then
+                    echo "Compute processes:"
+                    nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader 2>/dev/null || true
                 fi
-            done
+                if [ -n "$REMAINING_GRAPHICS" ]; then
+                    echo "Graphics processes:"
+                    nvidia-smi --query-apps=pid,process_name,used_memory --format=csv,noheader 2>/dev/null || true
+                fi
+            fi
         else
             echo "No GPU processes found to kill."
         fi
         
-        # Final GPU memory check
+        # Show final GPU status
         echo "Final GPU memory status:"
         nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null || echo "Could not query GPU memory"
     fi

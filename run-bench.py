@@ -674,7 +674,7 @@ def run_workload(config: Dict[str, Any]) -> None:
 
     workload_cfg = config['Workload']
 
-    supported_workloads = ['ShareGPT', 'LMCacheSynthetic', 'Agentic', 'Mooncake', 'Random', 'VLLMBenchmark']
+    supported_workloads = ['ShareGPT', 'LMCacheSynthetic', 'Agentic', 'Mooncake', 'Random', 'VLLMBenchmark', 'StrictSynthetic']
     for workload in workload_cfg:
         if workload not in supported_workloads:
             raise ValueError(f"Unsupported workload type: {workload}")
@@ -727,6 +727,14 @@ def run_workload(config: Dict[str, Any]) -> None:
                 run_vllm_benchmark(config)
         else:
             run_vllm_benchmark(vllm_benchmark_config)
+
+    if 'StrictSynthetic' in workload_cfg:
+        strict_synthetic_config = workload_cfg['StrictSynthetic']
+        if isinstance(strict_synthetic_config, list):
+            for config in strict_synthetic_config:
+                run_strict_synthetic(config)
+        else:
+            run_strict_synthetic(strict_synthetic_config)
 
 def run_sharegpt(sharegpt_config: Dict[str, Any]) -> None:
     """Run the ShareGPT workload with the specified configuration."""
@@ -1169,6 +1177,67 @@ def run_vllm_benchmark(vllm_benchmark_config: Dict[str, Any]) -> None:
             print(f"VLLMBenchmark workload completed successfully for request rate {request_rate}")
         else:
             raise RuntimeError(f"Failed to run VLLMBenchmark workload for request rate {request_rate}")
+
+def run_strict_synthetic(strict_synthetic_config: Dict[str, Any]) -> None:
+    """Run the StrictSynthetic workload with the specified configuration."""
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH, LMBENCH_SESSION_ID, CURRENT_SERVING_CONFIG
+
+    # Read the benchmark name from the current spec config
+    benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
+
+    # Get apiType from the current serving configuration
+    api_type = 'completions'  # Default value
+    if CURRENT_SERVING_CONFIG:
+        baseline_type = list(CURRENT_SERVING_CONFIG.keys())[0]
+        baseline_config = CURRENT_SERVING_CONFIG[baseline_type]
+        api_type = baseline_config.get('apiType', 'completions')  # Default to completions for backward compatibility
+
+    # Get StrictSynthetic specific parameters
+    num_concurrent_users = strict_synthetic_config.get('NUM_CONCURRENT_USERS')
+    num_rounds_per_user = strict_synthetic_config.get('NUM_ROUNDS_PER_USER')
+    shared_system_prompt_len = strict_synthetic_config.get('SHARED_SYSTEM_PROMPT_LEN')
+    first_prompt_len = strict_synthetic_config.get('FIRST_PROMPT_LEN')
+    follow_up_prompts_len = strict_synthetic_config.get('FOLLOW_UP_PROMPTS_LEN')
+    answer_len = strict_synthetic_config.get('ANSWER_LEN')
+    time_between_requests_values = strict_synthetic_config.get('TIME_BETWEEN_REQUESTS_PER_USER', [10])
+
+    # Validate required parameters
+    if not num_concurrent_users:
+        raise ValueError("NUM_CONCURRENT_USERS must be specified for StrictSynthetic workload")
+    if not num_rounds_per_user:
+        raise ValueError("NUM_ROUNDS_PER_USER must be specified for StrictSynthetic workload")
+
+    workload_exec_script_path = Path(__file__).parent / '3-workloads' / 'strict-synthetic' / 'run_strict_synthetic.sh'
+    if not workload_exec_script_path.exists():
+        raise FileNotFoundError(f"StrictSynthetic script not found at {workload_exec_script_path}")
+
+    os.chmod(workload_exec_script_path, 0o755)
+
+    cmd = [str(workload_exec_script_path)]
+    cmd.extend([str(MODEL_URL)])
+    cmd.extend(["http://localhost:30080"])
+    cmd.extend([KEY])
+    cmd.extend([str(num_concurrent_users)])
+    cmd.extend([str(num_rounds_per_user)])
+    cmd.extend([str(shared_system_prompt_len)])
+    cmd.extend([str(first_prompt_len)])
+    cmd.extend([str(follow_up_prompts_len)])
+    cmd.extend([str(answer_len)])
+    cmd.extend([str(api_type)])
+    cmd.extend([str(benchmark_name)])
+    cmd.extend([str(CURRENT_SERVING_INDEX)])
+    cmd.extend([str(CURRENT_SPEC_FILE_PATH)])
+    cmd.extend([str(LMBENCH_SESSION_ID)])
+    cmd.extend([str(time_between_requests) for time_between_requests in time_between_requests_values])
+
+    # Execute the workload
+    print(f"Running StrictSynthetic workload with parameters: {' '.join(cmd)}")
+    result = subprocess.run(cmd, check=True)
+
+    if result.returncode == 0:
+        print("StrictSynthetic workload completed successfully")
+    else:
+        raise RuntimeError("Failed to run StrictSynthetic workload")
 
 def clean_up() -> None:
     """
