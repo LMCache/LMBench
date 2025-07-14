@@ -41,9 +41,6 @@ def ProcessSummary(
         else:
             launched_queries = len(df)
 
-        if qps is None:
-            qps = 0.0
-
         if start_time is None:
             start_time = float(df["launch_time"].min())
         if end_time is None:
@@ -52,7 +49,7 @@ def ProcessSummary(
         total_time = end_time - start_time
         total_requests = launched_queries + pending_queries
         finished_requests = len(df)
-        
+
         total_prompt_tokens = df["prompt_tokens"].sum()
         total_generation_tokens = df["generation_tokens"].sum()
 
@@ -260,24 +257,33 @@ def process_output(filename: str, **kwargs):
                 qps = calculated_qps
                 print(f"Calculated QPS for agentic workload: {qps}")
 
-            # Check if this is strict synthetic workload
-            is_strict_synthetic = kwargs.get('IS_STRICT_SYNTHETIC', 'false').lower() == 'true'
-            num_rounds_per_user = None
-            if is_strict_synthetic:
-                try:
-                    num_rounds_per_user = int(kwargs.get('NUM_ROUNDS_PER_USER', 1))
-                    print(f"Processing strict synthetic workload with {num_rounds_per_user} rounds per user")
-                except (ValueError, TypeError):
-                    print("Warning: Could not parse NUM_ROUNDS_PER_USER, using 1 as default")
-                    num_rounds_per_user = 1
+        # Check if this is strict synthetic workload
+        is_strict_synthetic = kwargs.get('IS_STRICT_SYNTHETIC', 'false').lower() == 'true'
+        num_rounds_per_user = None
+        if is_strict_synthetic:
+            try:
+                num_rounds_per_user = int(kwargs.get('NUM_ROUNDS_PER_USER', 1))
+                print(f"Processing strict synthetic workload with {num_rounds_per_user} rounds per user")
+            except (ValueError, TypeError):
+                print("Warning: Could not parse NUM_ROUNDS_PER_USER, using 1 as default")
+                num_rounds_per_user = 1
 
-            # Process benchmark results using the standard method
-            results = ProcessSummary(
-                df, 
-                pending_queries=0,
-                is_strict_synthetic=is_strict_synthetic,
-                num_rounds_per_user=num_rounds_per_user
-            )
+        # Convert QPS to float for ProcessSummary
+        qps_float = None
+        if qps != 'unknown':
+            try:
+                qps_float = float(qps)
+            except (ValueError, TypeError):
+                qps_float = None
+
+        # Process benchmark results using the standard method
+        results = ProcessSummary(
+            df, 
+            pending_queries=0,
+            qps=qps_float,
+            is_strict_synthetic=is_strict_synthetic,
+            num_rounds_per_user=num_rounds_per_user
+        )
 
         # Create timestamp
         timestamp = datetime.now().strftime("%Y%m%d-%H%M")
