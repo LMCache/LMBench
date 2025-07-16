@@ -1199,6 +1199,7 @@ def run_strict_synthetic(strict_synthetic_config: Dict[str, Any]) -> None:
     first_prompt_len = strict_synthetic_config.get('FIRST_PROMPT_LEN')
     follow_up_prompts_len = strict_synthetic_config.get('FOLLOW_UP_PROMPTS_LEN')
     answer_len = strict_synthetic_config.get('ANSWER_LEN')
+    kv_reuse_ratio = strict_synthetic_config.get('KV_REUSE_RATIO', 1.0)  # Default to 1.0 for full reuse
     time_between_requests_values = strict_synthetic_config.get('TIME_BETWEEN_REQUESTS_PER_USER', [10])
 
     # Validate required parameters
@@ -1223,6 +1224,7 @@ def run_strict_synthetic(strict_synthetic_config: Dict[str, Any]) -> None:
     cmd.extend([str(first_prompt_len)])
     cmd.extend([str(follow_up_prompts_len)])
     cmd.extend([str(answer_len)])
+    cmd.extend([str(kv_reuse_ratio)])
     cmd.extend([str(api_type)])
     cmd.extend([str(benchmark_name)])
     cmd.extend([str(CURRENT_SERVING_INDEX)])

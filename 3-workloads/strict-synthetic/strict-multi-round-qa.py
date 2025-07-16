@@ -2,7 +2,7 @@
 # Expectation: as QPS increases, TTFT will increase super-linearly
 import argparse
 import asyncio
-import json
+import random
 import time
 import logging
 from dataclasses import dataclass
@@ -51,6 +51,10 @@ class WorkloadConfig:
 
     # Model name
     model: str
+
+    # The ratio of the conversation history that is reused between requests 
+    # (1 - kv_reuse_ratio) is completely randomized
+    kv_reuse_ratio: float
 
 #  Strict Multi-Round QA Visualization
 
@@ -119,6 +123,10 @@ class UserConfig:
     # Whether to include user id in request header
     enable_user_id: bool
 
+    # The ratio of the conversation history that is reused between requests 
+    # (1 - kv_reuse_ratio) is completely randomized
+    kv_reuse_ratio: float
+
     @staticmethod
     def new_user_config(user_id: int, workload_config: WorkloadConfig) -> "UserConfig":
         return UserConfig(
@@ -132,6 +140,7 @@ class UserConfig:
             time_between_requests_per_user=workload_config.time_between_requests_per_user,
             num_rounds_per_user=workload_config.num_rounds_per_user,
             enable_user_id=workload_config.enable_user_id,
+            kv_reuse_ratio=workload_config.kv_reuse_ratio,
         )
 
 class ChatHistory:
@@ -152,8 +161,32 @@ class ChatHistory:
         assert self.history[-1]["role"] == "user", "Expect user query"
         self.history.append({"role": "assistant", "content": response})
 
-    def get_messages_for_openai(self):
-        return self.history
+    def get_messages_for_openai(self, kv_reuse_ratio: float):
+        # we use str length and ratios as an approximation for token length
+        if kv_reuse_ratio == 1.0:
+            return self.history
+        
+        total_length = sum(len(message["content"]) for message in self.history)
+
+        rng = random.Random(42)
+        # a shallow copy of the dictionaries in the list
+        postfix_scrambled_history = self.history.copy()
+        # randomize a postfix based on the kv_reuse_ratio
+        randomization_budget = int(total_length * (1 - kv_reuse_ratio))
+        for i in range(len(self.history) - 1, -1, -1):
+            message = self.history[i]
+            message_len = len(message["content"])
+            randomize = min(randomization_budget, message_len)
+            randomization_budget -= randomize
+            # do the randomization here
+            content_prefix, content_suffix = message["content"][:message_len - randomize], list(message["content"][message_len - randomize:])
+            rng.shuffle(content_suffix)
+            postfix_scrambled_history[i] = {"role": message["role"], "content": content_prefix + "".join(content_suffix)}
+            if i == len(self.history) - 1:
+                postfix_scrambled_history[i]["content"] += "write a very long story please."
+            if randomization_budget == 0:
+                break
+        return postfix_scrambled_history
 
     def __len__(self):
         return len(self.history)
@@ -328,12 +361,13 @@ class RequestExecutor:
         chat_history: ChatHistory,
         max_tokens: int,
         finish_callback,
+        kv_reuse_ratio: float,
         extra_headers=None,
     ):
         """
         finish_callback: Callable[[Response], None]
         """
-        messages = chat_history.get_messages_for_openai()
+        messages = chat_history.get_messages_for_openai(kv_reuse_ratio)
         real_callback = lambda x: finish_callback(x.result())
         future = asyncio.run_coroutine_threadsafe(
             self._async_launch_request(messages, max_tokens, extra_headers), self.loop
@@ -379,7 +413,7 @@ class UserSession:
             self.chat_history.on_query(f"System Prompt: {shared_system_prompt}")
             first_prompt = self._gen_dummy_text(self.user_config.first_prompt_len)
             # write a long story ensures that the model will saturate the entire answer length
-            # will be cut off by the generation tokens that we pass in
+            # will saturate and be cut off by the generation tokens that we pass in
             self.chat_history.on_query(f"{self.user_config.user_id}: {first_prompt}, write a very long story please.")
         else:
             system_answer = self._gen_dummy_text(self.user_config.answer_len)
@@ -398,6 +432,7 @@ class UserSession:
             chat_history=self.chat_history,
             max_tokens=self.user_config.answer_len,
             finish_callback=self._update_result,
+            kv_reuse_ratio=self.user_config.kv_reuse_ratio,
             extra_headers={"x-user-id": str(self.user_config.user_id)},
         )
         self.unfinished_requests += 1
@@ -582,6 +617,12 @@ def parse_arguments():
         help="API type to use: completions or chat (default: completions)",
     )
 
+    parser.add_argument(
+        "--kv-reuse-ratio",
+        type=float,
+        default=1.0,
+        help="The ratio of the conversation history that is reused between requests (default: 1.0 i.e. full reuse)",
+    )
     args = parser.parse_args()
     return args
 
@@ -603,6 +644,7 @@ def main():
         answer_len=args.answer_len,
         enable_user_id=args.request_with_user_id,
         model=args.model,
+        kv_reuse_ratio=args.kv_reuse_ratio,
     )
 
     manager = UserSessionManager(workload_config)

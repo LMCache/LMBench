@@ -19,3 +19,4 @@ Workload:
       FIRST_PROMPT_LEN: 15000           # Length of first prompt (tokens)
       FOLLOW_UP_PROMPTS_LEN: 100      # Length of follow-up prompts (tokens)
       ANSWER_LEN: 100                 # Length of answers (tokens)
+      KV_REUSE_RATIO: 1.0             # Ratio of conversation history reused (1.0 = full reuse)

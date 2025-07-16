@@ -233,6 +233,7 @@ Workload:
       FIRST_PROMPT_LEN: 200           # Length of first prompt (tokens)
       FOLLOW_UP_PROMPTS_LEN: 100      # Length of follow-up prompts (tokens)
       ANSWER_LEN: 150                 # Length of answers (tokens)
+      KV_REUSE_RATIO: 1.0             # Ratio of conversation history reused between requests (0.0-1.0, default: 1.0)
 
     # Example with different user concurrency levels
     - NUM_CONCURRENT_USERS: 5
@@ -242,6 +243,7 @@ Workload:
       FIRST_PROMPT_LEN: 300
       FOLLOW_UP_PROMPTS_LEN: 150
       ANSWER_LEN: 200
+      KV_REUSE_RATIO: 0.8             # 80% of conversation history reused, 20% randomized
 
     # Example for high-throughput testing
     - NUM_CONCURRENT_USERS: 20
@@ -251,5 +253,16 @@ Workload:
       FIRST_PROMPT_LEN: 100
       FOLLOW_UP_PROMPTS_LEN: 50
       ANSWER_LEN: 100
+      KV_REUSE_RATIO: 1.0             # Full conversation history reuse (default behavior)
+
+    # Example for testing KV cache miss scenarios
+    - NUM_CONCURRENT_USERS: 8
+      NUM_ROUNDS_PER_USER: 4
+      TIME_BETWEEN_REQUESTS_PER_USER: [10]
+      SHARED_SYSTEM_PROMPT_LEN: 200
+      FIRST_PROMPT_LEN: 500
+      FOLLOW_UP_PROMPTS_LEN: 200
+      ANSWER_LEN: 100
+      KV_REUSE_RATIO: 0.0             # No conversation history reuse (completely randomized)
 
 

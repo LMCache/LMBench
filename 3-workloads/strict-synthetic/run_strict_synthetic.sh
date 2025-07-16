@@ -13,12 +13,13 @@ SHARED_SYSTEM_PROMPT_LEN=$6
 FIRST_PROMPT_LEN=$7
 FOLLOW_UP_PROMPTS_LEN=$8
 ANSWER_LEN=$9
-API_TYPE=${10}
-NAME=${11}
-SERVING_INDEX=${12}
-SPEC_FILE_PATH=${13}
-LMBENCH_SESSION_ID=${14}
-TIME_BETWEEN_REQUESTS_VALUES=("${@:15}")  # All remaining arguments are time_between_requests_per_user values
+KV_REUSE_RATIO=${10}
+API_TYPE=${11}
+NAME=${12}
+SERVING_INDEX=${13}
+SPEC_FILE_PATH=${14}
+LMBENCH_SESSION_ID=${15}
+TIME_BETWEEN_REQUESTS_VALUES=("${@:16}")  # All remaining arguments are time_between_requests_per_user values
 
 echo "=== Strict Synthetic Workload ==="
 echo "MODEL: $MODEL"
@@ -30,6 +31,7 @@ echo "SHARED_SYSTEM_PROMPT_LEN: $SHARED_SYSTEM_PROMPT_LEN"
 echo "FIRST_PROMPT_LEN: $FIRST_PROMPT_LEN"
 echo "FOLLOW_UP_PROMPTS_LEN: $FOLLOW_UP_PROMPTS_LEN"
 echo "ANSWER_LEN: $ANSWER_LEN"
+echo "KV_REUSE_RATIO: $KV_REUSE_RATIO"
 echo "API_TYPE: $API_TYPE"
 echo "NAME: $NAME"
 echo "SERVING_INDEX: $SERVING_INDEX"
@@ -70,6 +72,7 @@ for time_between_requests in "${TIME_BETWEEN_REQUESTS_VALUES[@]}"; do
         --first-prompt-len "$FIRST_PROMPT_LEN" \
         --follow-up-prompts-len "$FOLLOW_UP_PROMPTS_LEN" \
         --answer-len "$ANSWER_LEN" \
+        --kv-reuse-ratio "$KV_REUSE_RATIO" \
         --model "$MODEL" \
         --base-url "$BASE_URL" \
         --api-type "$API_TYPE" \
@@ -94,6 +97,7 @@ for time_between_requests in "${TIME_BETWEEN_REQUESTS_VALUES[@]}"; do
             FIRST_PROMPT_LEN="$FIRST_PROMPT_LEN" \
             FOLLOW_UP_PROMPTS_LEN="$FOLLOW_UP_PROMPTS_LEN" \
             ANSWER_LEN="$ANSWER_LEN" \
+            KV_REUSE_RATIO="$KV_REUSE_RATIO" \
             API_TYPE="$API_TYPE" \
             IS_STRICT_SYNTHETIC="true" \
             SERVING_INDEX="$SERVING_INDEX" \
