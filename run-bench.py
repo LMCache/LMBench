@@ -1075,6 +1075,34 @@ def run_trace_replayer(trace_replayer_config: Dict[str, Any]) -> None:
     cmd.extend([str(api_type)])
     cmd.extend([str(qps) for qps in qps_values])
 
+    # Ensure trace file is sorted chronologically (idempotent)
+    print(f"🔄 Ensuring trace file is chronologically sorted: {trace_file}")
+    try:
+        sort_script_path = Path(__file__).parent / '3-workloads' / 'trace-replayer' / 'sort_traces.py'
+        if sort_script_path.exists():
+            # Run the sort script to ensure traces are chronologically sorted
+            sort_result = subprocess.run([
+                sys.executable, 
+                str(sort_script_path), 
+                str(trace_file)
+            ], cwd=str(Path(__file__).parent / '3-workloads' / 'trace-replayer'), 
+               capture_output=True, text=True, check=False)
+            
+            if sort_result.returncode == 0:
+                print("✅ Trace file sorting completed successfully")
+                # Print the last few lines of output for visibility
+                if sort_result.stdout:
+                    lines = sort_result.stdout.strip().split('\n')
+                    for line in lines[-5:]:  # Show last 5 lines of output
+                        if line.strip():
+                            print(f"   {line}")
+            else:
+                print(f"⚠️ Warning: Trace sorting failed but continuing: {sort_result.stderr}")
+        else:
+            print(f"⚠️ Warning: Sort script not found at {sort_script_path}, skipping trace sorting")
+    except Exception as e:
+        print(f"⚠️ Warning: Failed to sort trace file, continuing anyway: {e}")
+
     # Execute the workload
     print(f"Running TraceReplayer workload with parameters: {' '.join(cmd)}")
     result = subprocess.run(cmd, check=True)

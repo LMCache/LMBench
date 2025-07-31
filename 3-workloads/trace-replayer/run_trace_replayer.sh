@@ -123,6 +123,13 @@ fi
 # Update TRACE_FILE to use the resolved path
 TRACE_FILE="$TRACE_PATH"
 
+# Sort trace file chronologically (idempotent)
+echo "🔄 Ensuring trace file is chronologically sorted..."
+python3 ./sort_traces.py "$TRACE_FILE"
+if [ $? -ne 0 ]; then
+    echo "⚠️ Warning: Failed to sort trace file, continuing anyway..."
+fi
+
 # Run benchmarks
 if [ "$PRESERVE_TIMING" = "true" ]; then
     # Single timed run
