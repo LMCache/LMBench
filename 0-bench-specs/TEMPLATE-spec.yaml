@@ -77,6 +77,30 @@ Serving:
       # NOTE: LLM-D requires LocalMinikube infrastructure.
       # The script reads HF_TOKEN directly from environment variable.
 
+  # Option 7: Flat (Local-Flat infrastructure ONLY)
+  - Flat:
+      # Configuration script from 2-serving-engines/flat/
+      # Available configurations: basic-vllm/run-llama8B.sh, basic-lmcache/run-llama8B.sh
+      configSelection: basic-vllm/run-llama8B.sh  # or basic-lmcache/run-llama8B.sh
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+      # API type: "completions" or "chat" (default: "completions")
+      apiType: completions  # or "chat"
+      # NOTE: Flat baseline requires Local-Flat infrastructure.
+      # The script reads HF_TOKEN directly from environment variable.
+      # Examples:
+      # - configSelection: basic-vllm/run-llama8B.sh     # Simple vLLM deployment
+      # - configSelection: basic-lmcache/run-llama8B.sh  # vLLM with LMCache integration
+
+  # Multiple Flat baselines for comparison (each will be deployed and tested separately):
+  # - Flat:
+  #     configSelection: basic-vllm/run-llama8B.sh
+  #     modelURL: meta-llama/Llama-3.1-8B-Instruct
+  #     apiType: completions
+  # - Flat:
+  #     configSelection: basic-lmcache/run-llama8B.sh
+  #     modelURL: meta-llama/Llama-3.1-8B-Instruct
+  #     apiType: completions
+
 # 3-workloads/
 Workload:
   # Multiple workloads can be specified and they will all be run.
@@ -128,12 +152,49 @@ Workload:
       QPS: [15]
       USE_SHAREGPT: false
 
-  Mooncake:
-    - NUM_ROUNDS: 20
-      SYSTEM_PROMPT: 0
-      CHAT_HISTORY: 256
-      ANSWER_LEN: 20
-      QPS: [1]
+  # TraceReplayer - Replays conversation traces with deterministic prompt generation
+  # Supports two modes: timed replay (with SPEED_UP) OR QPS-controlled replay
+  TraceReplayer:
+    # Full trace replay mode - replays entire trace (DURATION automatically calculated)
+    - TRACE_FILE: traces/gmi_trace.jsonl        # Main GMI trace (default)
+      # START_TIME: 0                           # Optional: defaults to 0 
+      # DURATION: full                          # Optional: 'full' or omit entirely for full trace
+      # SPEED_UP: 1.0                           # Optional: defaults to 1.0 (real-time)
+      PRESERVE_TIMING: true                     # Preserve original timestamps
+      
+    # Alternative ways to specify full trace duration
+    - TRACE_FILE: traces/gmi_trace.jsonl
+      DURATION: full                            # Explicit 'full' keyword
+      PRESERVE_TIMING: true
+      SPEED_UP: 2.0                             # 2x faster than original
+      
+    # Timed replay mode - preserves original timestamps from trace with specific duration
+    - TRACE_FILE: traces/gmi_trace.jsonl        
+      START_TIME: 0                             # Start time in seconds (relative to trace start)
+      DURATION: 60                              # Duration to replay in seconds
+      PRESERVE_TIMING: true                     # Preserve original timestamps
+      SPEED_UP: 1.0                             # Speed factor (1.0 = real-time, 2.0 = 2x faster, 10.0 = 10x faster)
+      
+    # QPS-controlled replay mode - ignores original timing, uses fixed request rate
+    - TRACE_FILE: traces/gmi_trace.jsonl
+      START_TIME: 0
+      DURATION: 120                             # Longer duration for more requests
+      PRESERVE_TIMING: false                    # Use QPS control instead of timestamps
+      QPS: [1.0, 2.0, 5.0]                    # Request rates to test (NOTE: SPEED_UP ignored)
+      
+    # Example: Replay specific time window from trace (accelerated)
+    - TRACE_FILE: traces/gmi_trace.jsonl
+      START_TIME: 300                           # Start at 5 minutes into trace
+      DURATION: 180                             # Replay 3 minutes worth
+      PRESERVE_TIMING: true
+      SPEED_UP: 2.0                             # 2x faster than original
+      
+    # Example: Using alternative trace file with full duration
+    - TRACE_FILE: traces/mooncake_trace.jsonl   # Alternative conversation trace
+      PRESERVE_TIMING: true                     # Full trace with original timing
+      SPEED_UP: 1.0
+
+
 
   Agentic:
     - NUM_USERS_WARMUP: 100
@@ -264,5 +325,66 @@ Workload:
       FOLLOW_UP_PROMPTS_LEN: 200
       ANSWER_LEN: 100
       KV_REUSE_RATIO: 0.0             # No conversation history reuse (completely randomized)
+
+
+
+
+# ============================================================================
+# EXAMPLE: Multiple Baselines for Comprehensive Comparison
+# ============================================================================
+# 
+# You can specify multiple baselines of ANY TYPE and the framework will:
+# 1. Deploy Baseline 1 → Run all workloads → Collect results
+# 2. Deploy Baseline 2 → Run all workloads → Collect results  
+# 3. Deploy Baseline 3 → Run all workloads → Collect results
+# 4. Generate comparison visualizations across all baselines
+#
+# Example comprehensive comparison spec:
+#
+# Serving:
+#   # Multiple Helm-ProductionStack baselines
+#   - Helm-ProductionStack:
+#       helmConfigSelection: basic/simple-vllm.yaml
+#       hf_token: <YOUR_HF_TOKEN>
+#       modelURL: meta-llama/Llama-3.1-8B-Instruct
+#   - Helm-ProductionStack:
+#       helmConfigSelection: routing/1-kvaware.yaml
+#       hf_token: <YOUR_HF_TOKEN>
+#       modelURL: meta-llama/Llama-3.1-8B-Instruct
+#
+#   # Multiple SGLang baselines (Local-Flat only)
+#   - SGLang:
+#       scriptName: comparison-baseline.sh
+#       modelURL: meta-llama/Llama-3.1-8B-Instruct
+#   - SGLang:
+#       scriptName: another-config.sh
+#       modelURL: meta-llama/Llama-3.1-70B-Instruct
+#
+#   # Multiple Dynamo baselines (Local-Flat only)
+#   - Dynamo:
+#       configSelection: comparison-baseline.yaml
+#       modelURL: meta-llama/Llama-3.1-8B-Instruct
+#   - Dynamo:
+#       configSelection: optimized-config.yaml
+#       modelURL: meta-llama/Llama-3.1-8B-Instruct
+#
+#   # Multiple Flat baselines (Local-Flat only)
+#   - Flat:
+#       configSelection: basic-vllm/run-llama8B.sh
+#       modelURL: meta-llama/Llama-3.1-8B-Instruct
+#   - Flat:
+#       configSelection: basic-lmcache/run-llama8B.sh
+#       modelURL: meta-llama/Llama-3.1-8B-Instruct
+#
+# This will generate unique keys like:
+# - helm_basic_simple_vllm
+# - helm_routing_1_kvaware  
+# - sglang_comparison_baseline
+# - sglang_another_config
+# - dynamo_comparison_baseline
+# - dynamo_optimized_config
+# - flat_basic_vllm_run_llama8B
+# - flat_basic_lmcache_run_llama8B
+# ============================================================================
 
 

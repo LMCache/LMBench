@@ -152,7 +152,7 @@ Workload:
 
 1. **Add to supported workloads list** (~line 625):
 ```python
-supported_workloads = ['ShareGPT', 'LMCacheSynthetic', 'Agentic', 'Mooncake', 'Random', 'VLLMBenchmark', 'YourWorkload']
+supported_workloads = ['ShareGPT', 'LMCacheSynthetic', 'Agentic', 'TraceReplayer', 'Random', 'VLLMBenchmark', 'YourWorkload']
 ```
 
 2. **Add dispatch logic** in `run_workload()` function (~line 650):

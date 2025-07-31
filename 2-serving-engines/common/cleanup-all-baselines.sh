@@ -7,6 +7,10 @@ echo "This script will clean up ALL baselines to ensure a clean deployment envir
 
 # 0. Environment Variable Cleanup
 echo "0. Cleaning up environment variables from previous runs..."
+
+# Save CUDA_VISIBLE_DEVICES before unsetting other variables
+SAVED_CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES"
+
 # Dynamo environment variables
 unset DYNAMO_SERVING_ENGINE
 unset DYNAMO_ENABLE_TORCH_COMPILE
@@ -47,7 +51,7 @@ unset VLLM_USE_V1
 unset RAY_DEDUP_LOGS
 # General cleanup
 unset TORCH_LOGS
-unset CUDA_VISIBLE_DEVICES
+# NOTE: Don't unset CUDA_VISIBLE_DEVICES here - we need it for GPU cleanup
 unset NCCL_DEBUG
 unset NCCL_SOCKET_IFNAME
 unset NCCL_IB_DISABLE
@@ -64,14 +68,34 @@ if command -v nvidia-smi &> /dev/null; then
         echo "Warning: nvidia-smi command failed, GPUs may not be accessible"
         echo "nvidia-smi not accessible, skipping GPU cleanup"
     else
-        # Get compute processes from nvidia-smi
-        GPU_COMPUTE_PIDS=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
-        
-        # Get graphics processes from nvidia-smi  
-        GPU_GRAPHICS_PIDS=$(nvidia-smi --query-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
-        
-        # Combine and deduplicate PIDs from nvidia-smi only
-        ALL_GPU_PIDS=$(echo -e "$GPU_COMPUTE_PIDS\n$GPU_GRAPHICS_PIDS" | sort -u | grep -E '^[0-9]+$' || true)
+        # Check if CUDA_VISIBLE_DEVICES was set (use saved value)
+        if [ -n "$SAVED_CUDA_VISIBLE_DEVICES" ]; then
+            echo "CUDA_VISIBLE_DEVICES is set to: $SAVED_CUDA_VISIBLE_DEVICES"
+            echo "Limiting GPU cleanup to only visible devices to avoid affecting other users"
+            
+            # Only check processes on visible GPU devices
+            VISIBLE_GPU_PIDS=""
+            for gpu_id in $(echo "$SAVED_CUDA_VISIBLE_DEVICES" | tr ',' ' '); do
+                # Get processes on this specific GPU
+                GPU_PIDS_ON_DEVICE=$(nvidia-smi -i "$gpu_id" --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' || true)
+                if [ -n "$GPU_PIDS_ON_DEVICE" ]; then
+                    VISIBLE_GPU_PIDS="$VISIBLE_GPU_PIDS $GPU_PIDS_ON_DEVICE"
+                fi
+            done
+            ALL_GPU_PIDS=$(echo "$VISIBLE_GPU_PIDS" | tr ' ' '\n' | sort -u | grep -E '^[0-9]+$' || true)
+        else
+            echo "⚠️  WARNING: CUDA_VISIBLE_DEVICES not set - cleaning ALL GPU processes (nuclear option)"
+            echo "This may affect other users on shared machines!"
+            
+            # Get compute processes from nvidia-smi
+            GPU_COMPUTE_PIDS=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
+            
+            # Get graphics processes from nvidia-smi  
+            GPU_GRAPHICS_PIDS=$(nvidia-smi --query-apps=pid --format=csv,noheader,nounits 2>/dev/null | grep -v '^$' | grep -v 'pid' || true)
+            
+            # Combine and deduplicate PIDs from nvidia-smi only
+            ALL_GPU_PIDS=$(echo -e "$GPU_COMPUTE_PIDS\n$GPU_GRAPHICS_PIDS" | sort -u | grep -E '^[0-9]+$' || true)
+        fi
         
         if [ -n "$ALL_GPU_PIDS" ]; then
             echo "Found GPU processes from nvidia-smi, attempting to kill them..."

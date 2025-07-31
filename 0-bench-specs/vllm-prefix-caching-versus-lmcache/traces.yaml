@@ -1,0 +1,42 @@
+Name: vllm-prefix-caching-versus-lmcache
+
+# Suggested Infrastructure (in run-bench.yaml)
+# 1-infrastructure:
+#   Location: Local-Flat
+#   Have access to 2 GPUs
+
+Serving:
+  - Flat:
+      configSelection: basic-vllm/run-llama8B.sh
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+      apiType: completions
+
+  - Flat:
+      configSelection: basic-lmcache/run-llama8B.sh
+      modelURL: meta-llama/Llama-3.1-8B-Instruct
+      apiType: completions
+
+Workload:
+  TraceReplayer:
+    # Option 1: Full trace replay with original timing (all 1,933 requests)
+    - TRACE_FILE: traces/mooncake_trace.jsonl
+      PRESERVE_TIMING: true
+      SPEED_UP: 1.0
+      
+    # Option 2: Full trace replay at 2x speed
+    - TRACE_FILE: traces/gmi_trace.jsonl
+      PRESERVE_TIMING: true
+      SPEED_UP: 1.0
+
+    # Option 3: Explicit 'full' duration with custom speed
+    # - TRACE_FILE: traces/gmi_trace.jsonl
+    #   DURATION: full
+    #   PRESERVE_TIMING: true
+    #   SPEED_UP: 10.0  # 10x faster than original
+    
+    # Option 4: QPS mode for specific time window (if you want controlled rate)
+    # - TRACE_FILE: traces/gmi_trace.jsonl
+    #   START_TIME: 0
+    #   DURATION: 300
+    #   PRESERVE_TIMING: false
+    #   QPS: [1, 2, 5]

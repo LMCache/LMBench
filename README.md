@@ -51,7 +51,7 @@ LMBench/
 ## Quick Start
 
 1. **Configure**: Edit `run-bench.yaml` to select suites and infrastructure
-2. **Deploy**: `export HF_TOKEN=<token> && python run-bench.py`
+2. **Deploy**: `export HF_TOKEN=<token> && CUDA_VISIBLE_DEVICES=0,1 python run-bench.py`
 3. **Results**: View `.png` graphs in `4-latest-results/<suite-name>/`
 
 ### Infrastructure Options

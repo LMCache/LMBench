@@ -118,10 +118,28 @@ while [ $elapsed -lt $TIMEOUT ]; do
         echo "🔍 Diagnostic info at ${elapsed}s:"
         show_port_info
         
-        # Show logs if they exist
-        show_recent_logs "dynamo_serve.log"
-        show_recent_logs "sglang.log"
-        show_recent_logs "rayserve.log"
+        # Show logs if they exist - check baseline-specific logs
+        case "$BASELINE_NAME" in
+            Flat-*)
+                show_recent_logs "flat_serve.log"
+                ;;
+            Dynamo-*)
+                show_recent_logs "dynamo_serve.log"
+                ;;
+            SGLang-*)
+                show_recent_logs "sglang.log"
+                ;;
+            RayServe-*)
+                show_recent_logs "rayserve.log"
+                ;;
+            *)
+                # Generic check for common log files
+                show_recent_logs "flat_serve.log"
+                show_recent_logs "dynamo_serve.log"
+                show_recent_logs "sglang.log"
+                show_recent_logs "rayserve.log"
+                ;;
+        esac
     fi
     
     echo "😴 Service not ready yet... waiting 5 seconds (elapsed: ${elapsed}s)"
@@ -134,8 +152,28 @@ done
 echo "💥 ERROR: Timeout waiting for $BASELINE_NAME service to become ready after $TIMEOUT seconds"
 echo "🔍 Final diagnostic info:"
 show_port_info
-show_recent_logs "dynamo_serve.log"
-show_recent_logs "sglang.log"
-show_recent_logs "rayserve.log"
+
+# Show baseline-specific logs in final diagnostic
+case "$BASELINE_NAME" in
+    Flat-*)
+        show_recent_logs "flat_serve.log"
+        ;;
+    Dynamo-*)
+        show_recent_logs "dynamo_serve.log"
+        ;;
+    SGLang-*)
+        show_recent_logs "sglang.log"
+        ;;
+    RayServe-*)
+        show_recent_logs "rayserve.log"
+        ;;
+    *)
+        # Generic check for common log files
+        show_recent_logs "flat_serve.log"
+        show_recent_logs "dynamo_serve.log"
+        show_recent_logs "sglang.log"
+        show_recent_logs "rayserve.log"
+        ;;
+esac
 
 exit 1 

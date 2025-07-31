@@ -57,7 +57,7 @@ def extract_key_from_filename(filename):
     if len(parts) >= 2:
         # Handle cases where baseline_key might contain underscores
         # We'll take everything before the workload type
-        workload_types = ['synthetic', 'sharegpt', 'agentic', 'mooncake', 'random']
+        workload_types = ['synthetic', 'sharegpt', 'agentic', 'trace_replayer', 'random']
 
         # Check for exact workload type matches first
         for i, part in enumerate(parts):

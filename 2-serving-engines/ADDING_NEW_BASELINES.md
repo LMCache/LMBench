@@ -11,11 +11,11 @@ Serving baselines expose an OpenAI-compatible endpoint on `localhost:30080` for 
 
 ## Compatibility Matrix
 
-| Infrastructure \ Baseline | SGLang | Helm-ProductionStack | Direct-ProductionStack | Dynamo | RayServe | LLM-D |
-|---------------------------|--------|---------------------|----------------------|--------|----------|-------|
-| **LMCacheGKE**            | ❌     | ✅                  | ✅                   | ❌     | ❌       | ❌      |
-| **LocalMinikube**         | ✔️     | ✅                  | ✅                   | ✔️     | ✔️       | ✅      |
-| **Local-Flat**            | ✅     | ❌                  | ❌                   | ✅     | ✅       | ❌      |
+| Infrastructure \ Baseline | SGLang | Helm-ProductionStack | Direct-ProductionStack | Dynamo | RayServe | LLM-D | Flat |
+|---------------------------|--------|---------------------|----------------------|--------|----------|-------|------|
+| **LMCacheGKE**            | ❌     | ✅                  | ✅                   | ❌     | ❌       | ❌      | ❌   |
+| **LocalMinikube**         | ✔️     | ✅                  | ✅                   | ✔️     | ✔️       | ✅      | ❌   |
+| **Local-Flat**            | ✅     | ❌                  | ❌                   | ✅     | ✅       | ❌      | ✅   |
 
 **Note**: When adding new baselines or infrastructure, please update this compatibility matrix.
 
@@ -25,7 +25,7 @@ Serving baselines expose an OpenAI-compatible endpoint on `localhost:30080` for 
 **2-serving-engines/**: Inference engine deployment
 
 - **Kubernetes/Helm**: Helm-ProductionStack, Direct-ProductionStack
-- **Script-based**: SGLang, Dynamo, RayServe (Local-Flat only)
+- **Script-based**: SGLang, Dynamo, RayServe, Flat (Local-Flat only)
 
 ## HuggingFace Token Handling
 

@@ -10,3 +10,6 @@ pandas
 tqdm
 matplotlib
 datasets
+vllm
+lmcache
+aiohttp

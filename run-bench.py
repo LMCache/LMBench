@@ -191,13 +191,31 @@ def validate_single_spec_config(config: Dict[str, Any], file_path: str) -> Dict[
                 raise ValueError(f"modelURL must be specified for Dynamo baseline {i} in {file_path}")
             if api_type not in ['completions', 'chat']:
                 raise ValueError(f"apiType must be 'completions' or 'chat' for Dynamo baseline {i} in {file_path}, got: {api_type}")
+        elif baseline_type == 'Flat':
+            config_selection = baseline_config.get('configSelection')
+            model_url = baseline_config.get('modelURL')
+            api_type = baseline_config.get('apiType', 'completions')  # Default to completions for backward compatibility
+            if not config_selection:
+                raise ValueError(f"configSelection must be specified for Flat baseline {i} in {file_path}")
+            if not model_url:
+                raise ValueError(f"modelURL must be specified for Flat baseline {i} in {file_path}")
+            if api_type not in ['completions', 'chat']:
+                raise ValueError(f"apiType must be 'completions' or 'chat' for Flat baseline {i} in {file_path}, got: {api_type}")
         else:
             raise ValueError(f"Unsupported baseline type: {baseline_type} in baseline {i} in {file_path}")
+
+    # Validate workload configuration
+    if 'Workload' in config:
+        workload_cfg = config['Workload']
+        supported_workloads = ['ShareGPT', 'LMCacheSynthetic', 'Agentic', 'TraceReplayer', 'Random', 'VLLMBenchmark', 'StrictSynthetic']
+        for workload in workload_cfg:
+            if workload not in supported_workloads:
+                raise ValueError(f"Unsupported workload type: {workload} in {file_path}")
 
     # Note: Infrastructure validation is now handled at the run-bench.yaml level
     # Individual spec files no longer need to specify infrastructure
 
-    print(f"Validated all serving baselines in {file_path}")
+    print(f"Validated all serving baselines and workloads in {file_path}")
     return config
 
 # 1. Infrastructure Setup
@@ -346,6 +364,10 @@ def generate_baseline_key(serving_config: Dict[str, Any]) -> str:
         # dynamo_{config_name} based on configSelection
         config_selection = baseline_config.get('configSelection', '')
         return f"dynamo_{config_selection.replace('/', '_').replace('.yaml', '')}"
+    elif baseline_type == 'Flat':
+        # flat_{config_name} based on configSelection
+        config_selection = baseline_config.get('configSelection', '')
+        return f"flat_{config_selection.replace('/', '_').replace('-', '_').replace('.sh', '')}"
     else:
         raise ValueError(f"Unsupported baseline type: {baseline_type}")
 
@@ -436,6 +458,28 @@ def setup_single_baseline(serving_config: Dict[str, Any], global_config: Dict[st
         if not HF_TOKEN:
             raise ValueError("HF_TOKEN environment variable is not set")
         dynamo_installation(baseline_config)
+
+    elif baseline_type == 'Flat':
+        # Validate that Flat baseline is only used with Local-Flat infrastructure
+        infrastructure_location = global_config.get('Infrastructure', {}).get('Location')
+        if infrastructure_location != 'Local-Flat':
+            raise ValueError(f"Flat baseline requires Local-Flat infrastructure, but got {infrastructure_location}")
+        
+        config_selection = baseline_config.get('configSelection')
+        model_url = baseline_config.get('modelURL')
+        api_type = baseline_config.get('apiType', 'completions')  # Default to completions for backward compatibility
+        if not config_selection:
+            raise ValueError(f"configSelection must be specified for Flat baseline {serving_index}")
+        if not model_url:
+            raise ValueError(f"modelURL must be specified for Flat baseline {serving_index}")
+        if api_type not in ['completions', 'chat']:
+            raise ValueError(f"apiType must be 'completions' or 'chat' for Flat baseline {serving_index}, got: {api_type}")
+        MODEL_URL = model_url
+        # HF_TOKEN is read directly from environment variable by the script
+        HF_TOKEN = os.environ.get('HF_TOKEN')
+        if not HF_TOKEN:
+            raise ValueError("HF_TOKEN environment variable is not set")
+        flat_installation(baseline_config)
 
     else:
         raise ValueError(f"Unsupported baseline type: {baseline_type}")
@@ -569,6 +613,31 @@ def dynamo_installation(dynamo_config: Dict[str, Any]) -> None:
     
     print("Dynamo deployment completed successfully")
 
+def flat_installation(flat_config: Dict[str, Any]) -> None:
+    """
+    Deploy Flat baseline using the unified choose-and-deploy.sh entrypoint
+    """
+    config_selection = flat_config.get('configSelection')
+    if not config_selection:
+        raise ValueError("configSelection must be specified for Flat")
+    
+    # Script reads HF_TOKEN directly from environment variable
+    if not os.environ.get('HF_TOKEN'):
+        raise ValueError("HF_TOKEN environment variable is not set")
+
+    # Use choose-and-deploy.sh as the single entrypoint (includes setup + deployment + wait)
+    script_path = Path(__file__).parent / '2-serving-engines' / 'flat' / 'choose-and-deploy.sh'
+    if not script_path.exists():
+        raise FileNotFoundError(f"Flat choose-and-deploy script not found: {script_path}")
+    
+    os.chmod(script_path, 0o755)
+    print(f"Running Flat choose-and-deploy script with configuration: {config_selection}")
+    
+    # CRITICAL: Block until service ready (choose-and-deploy.sh handles this internally)
+    subprocess.run([str(script_path), config_selection], check=True)
+    
+    print("Flat deployment completed successfully")
+
 # Note: The old complex SGLang YAML overriding function has been removed 
 # as we now use simple script-based deployment for Local-Flat infrastructure
 
@@ -674,7 +743,7 @@ def run_workload(config: Dict[str, Any]) -> None:
 
     workload_cfg = config['Workload']
 
-    supported_workloads = ['ShareGPT', 'LMCacheSynthetic', 'Agentic', 'Mooncake', 'Random', 'VLLMBenchmark', 'StrictSynthetic']
+    supported_workloads = ['ShareGPT', 'LMCacheSynthetic', 'Agentic', 'TraceReplayer', 'Random', 'VLLMBenchmark', 'StrictSynthetic']
     for workload in workload_cfg:
         if workload not in supported_workloads:
             raise ValueError(f"Unsupported workload type: {workload}")
@@ -696,13 +765,15 @@ def run_workload(config: Dict[str, Any]) -> None:
         else:
             run_synthetic(lmcache_synthetic_config)
 
-    if 'Mooncake' in workload_cfg:
-        mooncake_config = workload_cfg['Mooncake']
-        if isinstance(mooncake_config, list):
-            for config in mooncake_config:
-                run_mooncake(config)
+    if 'TraceReplayer' in workload_cfg:
+        trace_replayer_config = workload_cfg['TraceReplayer']
+        if isinstance(trace_replayer_config, list):
+            for config in trace_replayer_config:
+                run_trace_replayer(config)
         else:
-            run_mooncake(mooncake_config)
+            run_trace_replayer(trace_replayer_config)
+
+
 
     if 'Agentic' in workload_cfg:
         agentic_config = workload_cfg['Agentic']
@@ -735,6 +806,8 @@ def run_workload(config: Dict[str, Any]) -> None:
                 run_strict_synthetic(config)
         else:
             run_strict_synthetic(strict_synthetic_config)
+
+
 
 def run_sharegpt(sharegpt_config: Dict[str, Any]) -> None:
     """Run the ShareGPT workload with the specified configuration."""
@@ -928,22 +1001,61 @@ def run_synthetic(synthetic_config: Dict[str, Any]) -> None:
     else:
         raise RuntimeError("Failed to run synthetic workload")
 
-def run_mooncake(mooncake_config: Dict[str, Any]) -> None:
-    """Run the Mooncake workload with the specified configuration."""
-    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH, LMBENCH_SESSION_ID
+def run_trace_replayer(trace_replayer_config: Dict[str, Any]) -> None:
+    """Run the TraceReplayer workload with the specified configuration."""
+    global MODEL_URL, CURRENT_SERVING_INDEX, CURRENT_SPEC_CONFIG, CURRENT_SPEC_FILE_PATH, LMBENCH_SESSION_ID, CURRENT_SERVING_CONFIG
 
     # Read the benchmark name from the current spec config
     benchmark_name = CURRENT_SPEC_CONFIG.get('Name', 'unknown') if CURRENT_SPEC_CONFIG else 'unknown'
 
-    qps_values = mooncake_config.get('QPS')
-    NUM_ROUNDS = mooncake_config.get('NUM_ROUNDS')
-    SYSTEM_PROMPT = mooncake_config.get('SYSTEM_PROMPT')
-    CHAT_HISTORY = mooncake_config.get('CHAT_HISTORY')
-    ANSWER_LEN = mooncake_config.get('ANSWER_LEN')
+    # Get apiType from the current serving configuration
+    api_type = 'completions'  # Default value
+    if CURRENT_SERVING_CONFIG:
+        baseline_type = list(CURRENT_SERVING_CONFIG.keys())[0]
+        baseline_config = CURRENT_SERVING_CONFIG[baseline_type]
+        api_type = baseline_config.get('apiType', 'completions')  # Default to completions for backward compatibility
 
-    workload_exec_script_path = Path(__file__).parent / '3-workloads' / 'mooncake' / 'run_mooncake.sh'
+    # Get TraceReplayer specific parameters with improved defaults
+    trace_file = trace_replayer_config.get('TRACE_FILE', 'traces/gmi_trace.jsonl')
+    start_time = trace_replayer_config.get('START_TIME', 0)
+    duration = trace_replayer_config.get('DURATION')
+    preserve_timing = trace_replayer_config.get('PRESERVE_TIMING', False)
+    
+    # Handle both SPEED_UP (new, intuitive) and TIME_SCALE (old, for backward compatibility)
+    speed_up = trace_replayer_config.get('SPEED_UP')
+    time_scale = trace_replayer_config.get('TIME_SCALE')
+    
+    if speed_up is not None:
+        # SPEED_UP: 1.0 = real-time, 2.0 = 2x faster, 10.0 = 10x faster
+        internal_time_scale = 1.0 / speed_up
+        print(f"Using SPEED_UP: {speed_up}x (internal time_scale: {internal_time_scale})")
+    elif time_scale is not None:
+        # Legacy TIME_SCALE: 1.0 = real-time, 0.5 = 2x faster, 0.1 = 10x faster
+        internal_time_scale = time_scale
+        print(f"Using legacy TIME_SCALE: {time_scale} (consider using SPEED_UP instead)")
+    else:
+        # Default to real-time (1x speed)
+        internal_time_scale = 1.0
+        speed_up = 1.0
+        print(f"Using default speed: 1.0x (real-time)")
+    
+    qps_values = trace_replayer_config.get('QPS', [1.0])
+
+    # Handle full trace duration: if DURATION is missing, None, or "full", use special value -1
+    if duration is None or duration == "full":
+        duration = -1  # Special value that tells trace replayer to use full trace duration
+        print(f"DURATION not specified or set to 'full' - will replay entire trace duration")
+    elif isinstance(duration, str) and duration.lower() == "full":
+        duration = -1
+        print(f"DURATION set to 'full' - will replay entire trace duration")
+
+    # Validate parameters
+    if preserve_timing and not isinstance(preserve_timing, bool):
+        preserve_timing = str(preserve_timing).lower() == 'true'
+
+    workload_exec_script_path = Path(__file__).parent / '3-workloads' / 'trace-replayer' / 'run_trace_replayer.sh'
     if not workload_exec_script_path.exists():
-        raise FileNotFoundError(f"Mooncake script not found at {workload_exec_script_path}")
+        raise FileNotFoundError(f"TraceReplayer script not found at {workload_exec_script_path}")
 
     os.chmod(workload_exec_script_path, 0o755)
 
@@ -951,23 +1063,26 @@ def run_mooncake(mooncake_config: Dict[str, Any]) -> None:
     cmd.extend([str(MODEL_URL)])
     cmd.extend(["http://localhost:30080"]) # the base URL when serving with production stack
     cmd.extend([KEY]) # the key that will be embedded in the filenames of the results
-    cmd.extend([str(NUM_ROUNDS)])
-    cmd.extend([str(SYSTEM_PROMPT)])
-    cmd.extend([str(CHAT_HISTORY)])
-    cmd.extend([str(ANSWER_LEN)])
     cmd.extend([str(benchmark_name)])
     cmd.extend([str(CURRENT_SERVING_INDEX)])
     cmd.extend([str(CURRENT_SPEC_FILE_PATH)]) # Pass the spec file path
     cmd.extend([str(LMBENCH_SESSION_ID)]) # Pass the session ID
+    cmd.extend([str(trace_file)])
+    cmd.extend([str(start_time)])
+    cmd.extend([str(duration)])
+    cmd.extend(['true' if preserve_timing else 'false'])
+    cmd.extend([str(internal_time_scale)])  # Pass the internal time_scale value
+    cmd.extend([str(api_type)])
+    cmd.extend([str(qps) for qps in qps_values])
 
     # Execute the workload
-    print(f"Running Mooncake workload with parameters: {' '.join(cmd)}")
+    print(f"Running TraceReplayer workload with parameters: {' '.join(cmd)}")
     result = subprocess.run(cmd, check=True)
 
     if result.returncode == 0:
-        print("Mooncake workloads completed successfully")
+        print("TraceReplayer workload completed successfully")
     else:
-        raise RuntimeError("Failed to run Mooncake workload")
+        raise RuntimeError("Failed to run TraceReplayer workload")
 
 def run_agentic(agentic_config: Dict[str, Any]) -> None:
     """Run the Agentic workload with the specified configuration."""
@@ -1240,6 +1355,7 @@ def run_strict_synthetic(strict_synthetic_config: Dict[str, Any]) -> None:
         print("StrictSynthetic workload completed successfully")
     else:
         raise RuntimeError("Failed to run StrictSynthetic workload")
+
 
 def clean_up() -> None:
     """
