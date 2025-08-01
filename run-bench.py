@@ -1020,6 +1020,7 @@ def run_trace_replayer(trace_replayer_config: Dict[str, Any]) -> None:
     start_time = trace_replayer_config.get('START_TIME', 0)
     duration = trace_replayer_config.get('DURATION')
     preserve_timing = trace_replayer_config.get('PRESERVE_TIMING', False)
+    max_delay = trace_replayer_config.get('MAX_DELAY')  # Maximum delay between requests (for testing)
     
     # Handle both SPEED_UP (new, intuitive) and TIME_SCALE (old, for backward compatibility)
     speed_up = trace_replayer_config.get('SPEED_UP')
@@ -1038,6 +1039,9 @@ def run_trace_replayer(trace_replayer_config: Dict[str, Any]) -> None:
         internal_time_scale = 1.0
         speed_up = 1.0
         print(f"Using default speed: 1.0x (real-time)")
+    
+    if max_delay is not None:
+        print(f"🕐 MAX_DELAY: Delays capped at {max_delay}s (useful for testing production traces)")
     
     qps_values = trace_replayer_config.get('QPS', [1.0])
 
@@ -1073,6 +1077,7 @@ def run_trace_replayer(trace_replayer_config: Dict[str, Any]) -> None:
     cmd.extend(['true' if preserve_timing else 'false'])
     cmd.extend([str(internal_time_scale)])  # Pass the internal time_scale value
     cmd.extend([str(api_type)])
+    cmd.extend([str(max_delay) if max_delay is not None else 'None'])  # Pass MAX_DELAY parameter
     cmd.extend([str(qps) for qps in qps_values])
 
     # Ensure trace file is sorted chronologically (idempotent)

@@ -5,9 +5,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../../" && pwd )"
 cd "$SCRIPT_DIR"
 
-if [[ $# -lt 13 ]]; then
-    echo "Usage: $0 <model> <base url> <save file key> <name> <serving_index> <spec_file_path> <lmbench_session_id> <trace_file> <start_time> <duration> <preserve_timing> <time_scale> <api_type> [qps_values...]"
-    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:30080 test layerwise-benchmark 0 0-bench-specs/layerwise-spec.yaml lmbench-1234567890-abcd1234 traces/gmi_trace.jsonl 0 60 false 1.0 completions 1.0 2.0"
+if [[ $# -lt 14 ]]; then
+    echo "Usage: $0 <model> <base url> <save file key> <n> <serving_index> <spec_file_path> <lmbench_session_id> <trace_file> <start_time> <duration> <preserve_timing> <time_scale> <api_type> <max_delay> [qps_values...]"
+    echo "Example: $0 meta-llama/Llama-3.1-8B-Instruct http://localhost:30080 test layerwise-benchmark 0 0-bench-specs/layerwise-spec.yaml lmbench-1234567890-abcd1234 traces/gmi_trace.jsonl 0 60 false 1.0 completions 10.0 1.0 2.0"
     exit 1
 fi
 
@@ -26,8 +26,9 @@ DURATION=${10}
 PRESERVE_TIMING=${11}
 TIME_SCALE=${12}
 API_TYPE=${13}
+MAX_DELAY=${14}  # Maximum delay between requests (for testing production traces)
 
-QPS_VALUES=("${@:14}")  # QPS values for QPS-controlled mode
+QPS_VALUES=("${@:15}")  # QPS values for QPS-controlled mode
 
 collect_pod_logs() {
     local baseline="$1"
@@ -77,28 +78,42 @@ run_trace_replayer() {
     if [ "$PRESERVE_TIMING" = "true" ]; then
         # Timed replay mode - preserves original timestamps
         echo "🎬 Running timed replay (preserving original timestamps)"
-        python3 ./trace-replayer-qa.py \
-            --model "$MODEL" \
-            --base-url "$BASE_URL" \
-            --output "$2" \
-            --trace-file "$TRACE_FILE" \
-            --start-time "$START_TIME" \
-            --duration "$DURATION" \
+        cmd="python3 ./trace-replayer-qa.py \
+            --model \"$MODEL\" \
+            --base-url \"$BASE_URL\" \
+            --output \"$2\" \
+            --trace-file \"$TRACE_FILE\" \
+            --start-time \"$START_TIME\" \
+            --duration \"$DURATION\" \
             --preserve-timing \
-            --time-scale "$TIME_SCALE" \
-            --api-type "$API_TYPE"
+            --time-scale \"$TIME_SCALE\" \
+            --api-type \"$API_TYPE\""
+        
+        # Add max-delay if specified (not empty or "None")
+        if [[ -n "$MAX_DELAY" && "$MAX_DELAY" != "None" ]]; then
+            cmd="$cmd --max-delay \"$MAX_DELAY\""
+        fi
+        
+        eval $cmd
     else
         # QPS-controlled mode
         echo "📊 Running QPS-controlled replay (QPS: $1)"
-        python3 ./trace-replayer-qa.py \
-            --model "$MODEL" \
-            --base-url "$BASE_URL" \
-            --output "$2" \
-            --trace-file "$TRACE_FILE" \
-            --start-time "$START_TIME" \
-            --duration "$DURATION" \
-            --qps "$1" \
-            --api-type "$API_TYPE"
+        cmd="python3 ./trace-replayer-qa.py \
+            --model \"$MODEL\" \
+            --base-url \"$BASE_URL\" \
+            --output \"$2\" \
+            --trace-file \"$TRACE_FILE\" \
+            --start-time \"$START_TIME\" \
+            --duration \"$DURATION\" \
+            --qps \"$1\" \
+            --api-type \"$API_TYPE\""
+        
+        # Add max-delay if specified (not empty or "None") - though less useful in QPS mode
+        if [[ -n "$MAX_DELAY" && "$MAX_DELAY" != "None" ]]; then
+            cmd="$cmd --max-delay \"$MAX_DELAY\""
+        fi
+        
+        eval $cmd
     fi
 
     sleep 5

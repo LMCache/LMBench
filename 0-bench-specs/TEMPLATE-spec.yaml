@@ -167,6 +167,13 @@ Workload:
       DURATION: full                            # Explicit 'full' keyword
       PRESERVE_TIMING: true
       SPEED_UP: 2.0                             # 2x faster than original
+      MAX_DELAY: 10.0                           # Cap delays at 10 seconds (useful for testing production traces)
+      
+    # High-speed testing of production traces with delay cap
+    - TRACE_FILE: traces/gmi_trace.jsonl
+      PRESERVE_TIMING: true
+      SPEED_UP: 1000.0                          # 1000x faster (24 hours becomes ~86 seconds)
+      MAX_DELAY: 5.0                            # Cap any delay at 5 seconds max
       
     # Timed replay mode - preserves original timestamps from trace with specific duration
     - TRACE_FILE: traces/gmi_trace.jsonl        

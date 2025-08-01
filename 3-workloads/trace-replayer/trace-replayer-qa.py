@@ -28,6 +28,50 @@ class TraceDataset:
         self.actual_trace_duration = 0  # Store the actual duration of the trace
         self.load_trace()
     
+    def detect_timestamp_format(self, timestamps: List[int]) -> str:
+        """Detect whether timestamps are Unix nanoseconds, milliseconds, or synthetic offsets."""
+        if not timestamps:
+            return "unknown"
+        
+        # Sample a few timestamps
+        sample_size = min(10, len(timestamps))
+        sample_timestamps = timestamps[:sample_size]
+        
+        # Check if they look like Unix nanoseconds (around 19 digits, starting with 17...)
+        # Unix nanoseconds for 2025 would be around 1.7e18
+        unix_ns_count = sum(1 for ts in sample_timestamps if 1.6e18 <= ts <= 2.0e18)
+        if unix_ns_count >= sample_size * 0.8:
+            return "unix_nanoseconds"
+        
+        # Check if they look like Unix milliseconds (13 digits, starting with 17...)
+        # Unix milliseconds for 2025 would be around 1.7e12
+        unix_ms_count = sum(1 for ts in sample_timestamps if 1.6e12 <= ts <= 2.0e12)
+        if unix_ms_count >= sample_size * 0.8:
+            return "unix_milliseconds"
+        
+        # Check if they start near zero (synthetic/simulation timestamps)
+        max_timestamp = max(sample_timestamps)
+        if max_timestamp < 1e12:  # Less than Unix timestamp range
+            return "synthetic_offsets"
+        
+        return "unknown"
+
+    def convert_timestamp_to_seconds(self, timestamp: int, format_type: str) -> float:
+        """Convert timestamp to seconds based on detected format."""
+        if format_type == "unix_nanoseconds":
+            return timestamp / 1e9
+        elif format_type == "unix_milliseconds":
+            return timestamp / 1e3  
+        elif format_type == "synthetic_offsets":
+            # Assume synthetic timestamps are in milliseconds
+            return timestamp / 1e3
+        else:
+            # Default assumption: try nanoseconds first, then milliseconds
+            if timestamp > 1e15:  # Likely nanoseconds
+                return timestamp / 1e9
+            else:  # Likely milliseconds
+                return timestamp / 1e3
+
     def load_trace(self):
         """Load and filter trace data with relative timestamps."""
         print(f"📁 Loading trace file: {self.trace_file}")
@@ -57,12 +101,19 @@ class TraceDataset:
             print("❌ No entries found in trace file")
             return
         
+        # Detect timestamp format
+        all_timestamps = [entry['timestamp'] for entry in all_entries]
+        timestamp_format = self.detect_timestamp_format(all_timestamps)
+        print(f"🕐 Detected timestamp format: {timestamp_format}")
+        
         # Get the earliest and latest timestamps to calculate actual trace duration
         earliest_timestamp = all_entries[0]['timestamp']
         latest_timestamp = all_entries[-1]['timestamp']
         
-        # Calculate actual trace duration in seconds
-        self.actual_trace_duration = (latest_timestamp - earliest_timestamp) / 1e9  # Convert nanoseconds to seconds
+        # Calculate actual trace duration in seconds using proper conversion
+        earliest_seconds = self.convert_timestamp_to_seconds(earliest_timestamp, timestamp_format)
+        latest_seconds = self.convert_timestamp_to_seconds(latest_timestamp, timestamp_format)
+        self.actual_trace_duration = latest_seconds - earliest_seconds
         
         print(f"📈 Original trace spans {self.actual_trace_duration:.2f} seconds ({len(all_entries)} requests)")
         print(f"📅 Trace timestamp range: {earliest_timestamp} to {latest_timestamp}")
@@ -79,10 +130,10 @@ class TraceDataset:
         # Convert to relative timestamps in seconds and filter by time window
         filter_start = time.time()
         for entry in all_entries:
-            relative_time = (entry['timestamp'] - earliest_timestamp) / 1e9  # Convert to seconds
+            relative_time = self.convert_timestamp_to_seconds(entry['timestamp'], timestamp_format) - earliest_seconds
             
             # Filter by time window
-            if relative_time >= self.start_time and relative_time <= (self.start_time + self.duration):
+            if relative_time >= self.start_time and relative_time <= end_time:
                 entry['relative_timestamp'] = relative_time - self.start_time  # Relative to start_time
                 self.requests.append(entry)
         
@@ -102,7 +153,7 @@ class TraceDataset:
             print(f"   • Average output length: {avg_output_len:.0f} tokens")
             print(f"   • Request density: {len(self.requests)/time_span:.1f} req/s" if time_span > 0 else "   • Request density: ∞ req/s")
         else:
-            print(f"⚠️  No requests found in the specified time window ({self.start_time}s to {self.start_time + self.duration}s)")
+            print(f"⚠️  No requests found in the specified time window ({self.start_time}s to {end_time:.2f}s)")
             print(f"   Original trace spans: 0s to {self.actual_trace_duration:.2f}s")
             print(f"💡 Try adjusting START_TIME or DURATION parameters, or use DURATION: full")
     
@@ -161,28 +212,25 @@ class TraceDataset:
         return prompt
 
 class TraceReplayerBenchmark:
-    def __init__(self, args):
-        self.model = args.model
-        self.base_url = args.base_url
-        self.trace_file = args.trace_file
-        self.start_time = args.start_time
-        self.duration = args.duration
-        self.preserve_timing = args.preserve_timing
-        self.time_scale = args.time_scale
-        self.qps = args.qps
-        self.api_type = args.api_type
-        self.output_file = args.output
+    """Main trace replayer class."""
+    
+    def __init__(self, model: str, base_url: str, output_file: str, trace_file: str, 
+                 start_time: float = 0, duration: float = 60, preserve_timing: bool = True,
+                 time_scale: float = 1.0, qps: float = 1.0, api_type: str = "completions",
+                 max_delay: float = None):
+        self.model = model
+        self.base_url = base_url
+        self.output_file = output_file
+        self.api_type = api_type
+        self.preserve_timing = preserve_timing
+        self.time_scale = time_scale
+        self.qps = qps
+        self.max_delay = max_delay  # Maximum delay between requests (for testing)
+        self.request_id = 0
+        self.results = []
         
         # Load dataset
-        self.dataset = TraceDataset(
-            trace_file=self.trace_file,
-            start_time=self.start_time,
-            duration=self.duration
-        )
-        
-        # Track results
-        self.results = []
-        self.request_id = 0
+        self.dataset = TraceDataset(trace_file, start_time, duration)
     
     async def send_request(self, prompt: str, max_tokens: int, timestamp: float) -> Dict[str, Any]:
         """Send a single request to the API."""
@@ -285,12 +333,20 @@ class TraceReplayerBenchmark:
             # Use the pre-calculated relative timestamp
             delay = entry['relative_timestamp'] * self.time_scale
             
+            # Cap delay if max_delay is set (useful for testing with production traces)
+            if self.max_delay is not None and delay > self.max_delay:
+                delay = self.max_delay
+            
             if delay > 0:
                 await asyncio.sleep(delay)
             
             # Log first few requests for visibility
             if request_index < 5:
-                print(f"📤 Request {request_index + 1}: input_len={entry['input_length']}, output_len={entry['output_length']}, delay={delay:.3f}s")
+                delay_info = f"delay={delay:.3f}s"
+                if self.max_delay is not None and entry['relative_timestamp'] * self.time_scale > self.max_delay:
+                    original_delay = entry['relative_timestamp'] * self.time_scale
+                    delay_info = f"delay={delay:.3f}s (capped from {original_delay:.1f}s)"
+                print(f"📤 Request {request_index + 1}: input_len={entry['input_length']}, output_len={entry['output_length']}, {delay_info}")
             
             # Generate synthetic prompt using hash_ids and input_length from trace
             prompt = self.dataset.generate_synthetic_prompt(
@@ -422,7 +478,18 @@ class TraceReplayerBenchmark:
             if result.get('error'):
                 failed_requests += 1
                 if failed_requests <= 3:  # Show first few errors
-                    print(f"❌ Request {i + 1} failed: {result['error']}")
+                    error_msg = result['error']
+                    # Clean up error messages for common cases
+                    if "maximum context length" in error_msg:
+                        print(f"❌ Request {i + 1} failed: Context length exceeded")
+                    elif "HTTP" in error_msg and "400" in error_msg:
+                        print(f"❌ Request {i + 1} failed: Bad request (likely context/token limit)")
+                    elif "HTTP" in error_msg:
+                        print(f"❌ Request {i + 1} failed: {error_msg.split(':')[0]}")  # Just show HTTP status
+                    else:
+                        print(f"❌ Request {i + 1} failed: {error_msg}")
+                elif failed_requests == 4:
+                    print(f"❌ ... (suppressing further error messages, {failed_requests} total failures so far)")
             else:
                 successful_requests += 1
             
@@ -481,16 +548,36 @@ class TraceReplayerBenchmark:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
                 for result in self.results:
+                    # Extract values with defaults
+                    timestamp = result.get('timestamp', 0)
+                    latency = result.get('latency', 0)
+                    prompt_tokens = result.get('prompt_tokens', 0)
+                    completion_tokens = result.get('completion_tokens', 0)
+                    total_tokens = result.get('total_tokens', 0)
+                    error = result.get('error', '')
+                    
+                    # Calculate realistic timing estimates
+                    if error or completion_tokens == 0:
+                        # For errors or no tokens generated, set minimal realistic values
+                        ttft = min(latency * 0.5, 1.0)  # Cap TTFT at 1 second for errors
+                        generation_time = max(latency - ttft, 0.001)  # Ensure positive generation time
+                    else:
+                        # For successful requests, estimate based on token generation
+                        # Assume TTFT is time to generate first token + processing overhead
+                        estimated_ttft = min(latency * 0.2, 2.0)  # 20% of latency, capped at 2s
+                        generation_time = max(latency - estimated_ttft, 0.001)  # Ensure positive
+                        ttft = estimated_ttft
+                    
                     # Convert result format to match expected fields
                     converted_result = {
-                        'launch_time': result.get('timestamp', 0),  # Use timestamp as launch_time
-                        'finish_time': result.get('timestamp', 0) + result.get('latency', 0),  # launch_time + latency
-                        'ttft': result.get('latency', 0) * 0.1,  # Estimate TTFT as 10% of total latency
-                        'generation_time': result.get('latency', 0) * 0.9,  # Estimate generation time as 90% of total latency
-                        'prompt_tokens': result.get('prompt_tokens', 0),
-                        'generation_tokens': result.get('completion_tokens', 0),  # Rename completion_tokens to generation_tokens
-                        'total_tokens': result.get('total_tokens', 0),
-                        'error': result.get('error', '')
+                        'launch_time': timestamp,  # Use timestamp as launch_time
+                        'finish_time': timestamp + latency,  # launch_time + latency
+                        'ttft': ttft,  # Time to first token (realistic estimate)
+                        'generation_time': generation_time,  # Time to generate remaining tokens
+                        'prompt_tokens': prompt_tokens,
+                        'generation_tokens': completion_tokens,  # Rename completion_tokens to generation_tokens
+                        'total_tokens': total_tokens,
+                        'error': error
                     }
                     writer.writerow(converted_result)
             print(f"✅ Results saved successfully!")
@@ -534,6 +621,8 @@ def main():
                        help='Speed up factor (1.0 = real-time, 2.0 = 2x faster, 10.0 = 10x faster)')
     parser.add_argument('--time-scale', type=float, default=1.0,
                        help='Legacy time scale factor (1.0 = real-time, 0.5 = 2x faster) - use --speed-up instead')
+    parser.add_argument('--max-delay', type=float, default=None,
+                       help='Maximum delay between requests in seconds (for testing with production traces)')
     
     args = parser.parse_args()
     
@@ -551,9 +640,9 @@ def main():
     if args.speed_up is not None:
         # Convert SPEED_UP to internal time_scale: time_scale = 1.0 / speed_up
         args.time_scale = 1.0 / args.speed_up
-        print(f"   • Speed Up: {args.speed_up}x (internal time_scale: {args.time_scale})")
+        print(f"🚀 Using SPEED_UP: {args.speed_up}x (internal time_scale: {args.time_scale})")
     else:
-        print(f"   • TIME_SCALE: {args.time_scale} (consider using --speed-up for more intuitive control)")
+        print(f"🕐 Using TIME_SCALE: {args.time_scale} (consider using --speed-up for more intuitive control)")
     
     if not args.preserve_timing:
         print(f"   • QPS Mode: {args.qps} req/s")
@@ -562,7 +651,9 @@ def main():
     print("=" * 60)
     
     # Run benchmark
-    benchmark = TraceReplayerBenchmark(args)
+    benchmark = TraceReplayerBenchmark(args.model, args.base_url, args.output, args.trace_file, 
+                 start_time=args.start_time, duration=args.duration, preserve_timing=args.preserve_timing,
+                 time_scale=args.time_scale, qps=args.qps, api_type=args.api_type, max_delay=args.max_delay)
     asyncio.run(benchmark.run_benchmark())
 
 if __name__ == "__main__":

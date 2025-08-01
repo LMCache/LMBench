@@ -19,22 +19,43 @@ Serving:
 Workload:
   TraceReplayer:
     # Option 1: Full trace replay with original timing (all 1,933 requests)
-    - TRACE_FILE: traces/mooncake_trace.jsonl
-      PRESERVE_TIMING: true
-      SPEED_UP: 1.0
+    # - TRACE_FILE: traces/mooncake_trace.jsonl
+    #   PRESERVE_TIMING: true
+    #   SPEED_UP: 1.0
       
-    # Option 2: Full trace replay at 2x speed
-    - TRACE_FILE: traces/gmi_trace.jsonl
-      PRESERVE_TIMING: true
-      SPEED_UP: 1.0
+    # # Option 2: Full trace replay at 2x speed
+    # - TRACE_FILE: traces/gmi_trace.jsonl
+    #   PRESERVE_TIMING: true
+    #   SPEED_UP: 1.0
+    #   MAX_DELAY: 30.0  # Cap delays at 30 seconds to avoid 9-hour waits
 
-    # Option 3: Explicit 'full' duration with custom speed
+    # # Option 3: High-speed testing of production gmi_trace (faster testing)
+    # - TRACE_FILE: traces/gmi_trace.jsonl
+    #   PRESERVE_TIMING: true
+    #   SPEED_UP: 100.0  # 100x faster (24 hours becomes ~14 minutes)
+    #   MAX_DELAY: 10.0  # Cap delays at 10 seconds max
+
+    # # Option 4: High-activity 5-minute window (95 requests, 0.32 req/s)
+    # - TRACE_FILE: traces/gmi_trace.jsonl
+    #   START_TIME: 85020   # 23h 36m into trace (busiest 5-min period)
+    #   DURATION: 300       # 5 minutes of high activity
+    #   PRESERVE_TIMING: true
+    #   SPEED_UP: 1.0       # Real-time replay of busy period
+      
+    # Option 5: High-activity 2-minute window (44 requests, 0.37 req/s) 
+    - TRACE_FILE: traces/gmi_trace.jsonl
+      START_TIME: 85200   # 23h 39m into trace (busiest 2-min period)
+      DURATION: 120       # 2 minutes of highest activity
+      PRESERVE_TIMING: true
+      SPEED_UP: 1.0       # Real-time replay of peak activity
+
+    # Option 6: Explicit 'full' duration with custom speed
     # - TRACE_FILE: traces/gmi_trace.jsonl
     #   DURATION: full
     #   PRESERVE_TIMING: true
     #   SPEED_UP: 10.0  # 10x faster than original
     
-    # Option 4: QPS mode for specific time window (if you want controlled rate)
+    # Option 7: QPS mode for specific time window (if you want controlled rate)
     # - TRACE_FILE: traces/gmi_trace.jsonl
     #   START_TIME: 0
     #   DURATION: 300

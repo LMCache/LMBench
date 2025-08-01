@@ -16,7 +16,7 @@ echo "vLLM location: $(which vllm)"
 
 LMCACHE_CHUNK_SIZE=256 \
 LMCACHE_LOCAL_CPU=True \
-LMCACHE_MAX_LOCAL_CPU_SIZE=5.0 \
+LMCACHE_MAX_LOCAL_CPU_SIZE=60.0 \
 LMCACHE_USE_EXPERIMENTAL=True \
 vllm serve \
     meta-llama/Llama-3.1-8B-Instruct \
