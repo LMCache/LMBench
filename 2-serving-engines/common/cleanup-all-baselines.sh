@@ -152,7 +152,7 @@ else
     echo "nvidia-smi not found, skipping GPU cleanup"
 fi
 
-# 2. Port 30080 Cleanup
+# 2. Port 8000,8001,8002,8003,8004,8005,8006,8007,30080 Cleanup
 echo "2. Cleaning up port 30080..."
 # Kill kubectl port-forward processes
 pkill -f "kubectl port-forward.*30080" 2>/dev/null || true

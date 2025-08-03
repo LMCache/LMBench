@@ -12,7 +12,8 @@
   # - single-debug/llmd-basic-spec.yaml
   # - open-source-comparisons/all.yaml
   # - single-debug/strict-synthetic-spec.yaml
-  - vllm-prefix-caching-versus-lmcache/traces.yaml
+  # - vllm-prefix-caching-versus-lmcache/traces.yaml
+  - centralized-cache/
 
 1-infrastructure:
   # Location: LocalMinikube

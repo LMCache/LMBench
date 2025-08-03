@@ -6,6 +6,12 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+echo "VIRTUAL_ENV is: $VIRTUAL_ENV"
+
+pip install vllm
+pip install lmcache
+pip install uvicorn
+
 # Check if configuration script argument is provided
 if [ $# -eq 0 ]; then
     echo "Usage: $0 <config-script-path>"

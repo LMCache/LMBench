@@ -14,13 +14,3 @@ fi
 echo "Starting vLLM serve with LMCache integration on port 30080..."
 echo "vLLM location: $(which vllm)"
 
-LMCACHE_CHUNK_SIZE=256 \
-LMCACHE_LOCAL_CPU=True \
-LMCACHE_MAX_LOCAL_CPU_SIZE=60.0 \
-LMCACHE_USE_EXPERIMENTAL=True \
-vllm serve \
-    meta-llama/Llama-3.1-8B-Instruct \
-    --max-model-len 32000 \
-    --port 30080 \
-    --kv-transfer-config \
-    '{"kv_connector":"LMCacheConnectorV1", "kv_role":"kv_both"}'
