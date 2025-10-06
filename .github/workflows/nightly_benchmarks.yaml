@@ -1,8 +1,8 @@
 name: Nightly Benchmarks
 
 on:
-  schedule:
-    - cron: '0 10 * * *' # 5:00 AM CT
+  # schedule:
+  #   - cron: '0 10 * * *' # 5:00 AM CT
   workflow_dispatch: # Allow manual triggering
 
 jobs:
