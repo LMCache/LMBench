@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # strict-multi-round-qa.py is a variation of multi-round-qa.py that adheres strictly to time between requests per user
 # Expectation: as QPS increases, TTFT will increase super-linearly
 import argparse

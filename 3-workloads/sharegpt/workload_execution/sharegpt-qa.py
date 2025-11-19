@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 #!/usr/bin/env python3
 """
 sharegpt_benchmark.py – streamlined ShareGPT replay tool

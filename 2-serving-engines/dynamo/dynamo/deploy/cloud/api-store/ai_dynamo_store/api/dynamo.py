@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # type: ignore  # Ignore all mypy errors in this file
 #  SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #  SPDX-License-Identifier: Apache-2.0
